@@ -74,6 +74,11 @@ lean_lib «GeneratedEvmYul»
 lean_exe «conform» where
   root := `Conform.Main
 
+lean_lib «Tests»
+
+lean_exe «robinhoodTests» where
+  root := `Tests.Main
+
 lean_exe «yulSemanticsTests» where
   root := `EvmYul.Yul.YulSemanticsTests.Main
 

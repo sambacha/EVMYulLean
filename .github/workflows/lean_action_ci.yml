@@ -2,13 +2,173 @@ name: Lean Action CI
 
 on:
   push:
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
+      - '.gitignore'
   pull_request:
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
+      - '.gitignore'
   workflow_dispatch:
+
+# Cancel in-progress runs for the same branch/PR
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
-      - uses: leanprover/lean-action@v1
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # --- 1. CACHE MATHLIB GLOBALLY (separate from project cache) ---
+      - name: Cache Mathlib
+        id: cache-mathlib
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/mathlib
+          key: mathlib-${{ hashFiles('lean-toolchain', 'lake-manifest.json') }}
+          restore-keys: |
+            mathlib-
+
+      # --- 2. START THE BUILD TIMER ---
+      - name: Start timer
+        id: timer
+        run: echo "start=$(date +%s)" >> $GITHUB_OUTPUT
+
+      # --- 3. RUN LEAN WITH OPTIMIZED CACHE SETTINGS ---
+      - name: Run Lean Action
+        id: lean_build
+        uses: leanprover/lean-action@v1
+        with:
+          # Explicit cache key includes toolchain and manifest to maximize hit rate
+          cache-key: lean-${{ runner.os }}-${{ hashFiles('lean-toolchain') }}-${{ hashFiles('lake-manifest.json') }}
+          restore-keys: |
+            lean-${{ runner.os }}-${{ hashFiles('lean-toolchain') }}-
+            lean-${{ runner.os }}-
+          use-github-cache: true
+
+      # --- 4. END THE BUILD TIMER (runs even if the build fails) ---
+      - name: End timer
+        id: timer_end
+        if: always() # Ensures we capture timing even on failure
+        run: |
+          end=$(date +%s)
+          start=${{ steps.timer.outputs.start }}
+          duration=$((end - start))
+          echo "duration=$duration" >> $GITHUB_OUTPUT
+          echo "Build took $duration seconds ($((duration / 60)) minutes)."
+
+      # --- 5. GATHER STATISTICS & PERSIST AS ARTIFACT (Short-term) ---
+      - name: Generate stats JSON
+        if: always()
+        run: |
+          echo '{
+            "timestamp": "$(date -Iseconds)",
+            "commit": "${{ github.sha }}",
+            "duration_seconds": ${{ steps.timer_end.outputs.duration }},
+            "cache_hit": "${{ steps.lean_build.outputs.cache-hit }}",
+            "run_id": "${{ github.run_id }}",
+            "workflow": "${{ github.workflow }}"
+          }' > stats.json
+
+      - name: Upload stats artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-stats-${{ github.sha }}
+          path: stats.json
+          retention-days: 30
+
+      # --- 6. PERSIST TO DEDICATED BRANCH (Long-term historical CSV) ---
+      - name: Commit stats to historical branch
+        if: always()
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+          # Fetch or create the orphan stats branch
+          git fetch origin ci-stats || git checkout --orphan ci-stats
+          git checkout ci-stats || git checkout -b ci-stats
+          # Create CSV header if it doesn't exist
+          if [ ! -f stats.csv ]; then echo "timestamp,commit,duration_seconds,cache_hit,run_id" > stats.csv; fi
+          # Append current stats (escaping commas)
+          echo "$(date -Iseconds),${{ github.sha }},${{ steps.timer_end.outputs.duration }},${{ steps.lean_build.outputs.cache-hit }},${{ github.run_id }}" >> stats.csv
+          git add stats.csv
+          git commit -m "Update stats for ${{ github.sha }}" || echo "No changes to commit"
+          git push origin ci-stats --force-with-lease
+
+      # --- 7. POST STATISTICS AS A PR COMMENT ---
+      - name: Find associated Pull Request number
+        id: find_pr
+        if: always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            // If triggered by pull_request, it's straightforward
+            if (context.payload.pull_request) {
+              return context.payload.pull_request.number;
+            }
+            // If triggered by push, find the open PR that matches this head commit
+            const { data: pulls } = await github.rest.pulls.list({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              head: `${context.repo.owner}:${context.ref.replace('refs/heads/', '')}`,
+            });
+            return pulls.length > 0 ? pulls[0].number : null;
+          result-encoding: string
+
+      - name: Comment or update stats on PR
+        if: always() && steps.find_pr.outputs.result != 'null'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const prNumber = parseInt(${{ steps.find_pr.outputs.result }});
+            const duration = ${{ steps.timer_end.outputs.duration || 0 }};
+            const cacheHit = "${{ steps.lean_build.outputs.cache-hit || 'unknown' }}";
+            const runId = "${{ github.run_id }}";
+            const sha = "${{ github.sha }}";
+
+            const emoji = cacheHit === 'true' ? '✅' : '❌';
+            const minutes = Math.round(duration / 60);
+            const seconds = duration % 60;
+
+            const body = `## 📊 CI Build Statistics
+            | Metric | Value |
+            |--------|-------|
+            | **Build Duration** | ${minutes}m ${seconds}s (${duration}s total) |
+            | **Cache Status** | ${emoji} ${cacheHit === 'true' ? 'Cache Hit' : 'Cache Miss / Partial'} |
+            | **Commit** | \`${sha}\` |
+            | **Run ID** | [${runId}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${runId}) |
+            `;
+
+            // Find existing bot comment to update (avoid spam)
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: prNumber,
+            });
+            const botComment = comments.find(c => 
+              c.user.type === 'Bot' && c.body.includes('📊 CI Build Statistics')
+            );
+
+            if (botComment) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: botComment.id,
+                body: body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: prNumber,
+                body: body,
+              });
+            }
