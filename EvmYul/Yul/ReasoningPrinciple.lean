@@ -1,4 +1,16 @@
-import EvmYul.Yul.Interpreter
+module
+
+public import EvmYul.Yul.Interpreter
+public import EvmYul.ProofTags
+
+/-!
+# Reasoning principles for Yul
+
+Specifications `Spec` / `FuelSpec` of Yul executions and the rules to prove them compositionally:
+sequencing, conditionals, loops and purity.
+-/
+
+public section
 
 namespace EvmYul
 namespace Yul
@@ -6,10 +18,10 @@ namespace ReasoningPrinciple
 
 open Ast
 
-def Spec (R : State → State → Prop) (s₀ s₉ : State) : Prop :=
+@[expose] def Spec (R : State → State → Prop) (s₀ s₉ : State) : Prop :=
   R s₀ s₉
 
-def FuelSpec (R : Nat → State → State → Prop) (fuel : Nat) (s₀ s₉ : State) : Prop :=
+@[expose] def FuelSpec (R : Nat → State → State → Prop) (fuel : Nat) (s₀ s₉ : State) : Prop :=
   R fuel s₀ s₉
 
 theorem spec_eq {P P' : State → State → Prop} {s₀ s₉ : State} :
@@ -17,7 +29,7 @@ theorem spec_eq {P P' : State → State → Prop} {s₀ s₉ : State} :
   intro h hspec
   exact h hspec
 
-def State.isOk : State → Prop
+@[expose] def State.isOk : State → Prop
   | .Ok _ _ => True
   | _ => False
 
@@ -41,7 +53,7 @@ def State.isOutOfFuel : State → Prop
   | .OutOfFuel => True
   | _ => False
 
-def isPure (s₀ s₁ : State) : Prop :=
+@[expose] def isPure (s₀ s₁ : State) : Prop :=
   s₀.sharedState = s₁.sharedState
 
 @[simp]
@@ -90,7 +102,7 @@ theorem State.isLeave_leave (sharedState : EvmYul.SharedState .Yul) (store : Var
     State.isLeave (.Checkpoint (.Leave sharedState store)) := by
   trivial
 
-@[simp]
+@[simp, reviewed_rfl "reflexivity of the Yul purity relation (`isPure s s` is `sharedState` equality)"]
 theorem isPure_rfl (s : State) : isPure s s := by
   rfl
 
@@ -104,31 +116,31 @@ theorem isPure_insert (s : State) (var : Identifier) (val : Ast.Literal) :
     isPure s (s.insert var val) := by
   cases s <;> simp [isPure, State.insert, State.sharedState]
 
-def LoopExact
+@[expose] def LoopExact
     (cond : Expr) (post body : List Stmt) (codeOverride : Option YulContract)
     (fuel : Nat) (s₀ s₉ : State) : Prop :=
   exec fuel (.For cond post body) codeOverride s₀ = .ok s₉
 
-def FunctionBodyExact
+@[expose] def FunctionBodyExact
     (f : FunctionDefinition) (codeOverride : Option YulContract)
     (fuel : Nat) (s₀ s₉ : State) : Prop :=
   exec fuel (.Block f.body) codeOverride s₀ = .ok s₉
 
-def FunctionCallSummary
+@[expose] def FunctionCallSummary
     (AFunc : Nat → State → State → Prop) (f : FunctionDefinition)
     (args : List Ast.Literal) (vars : List Identifier) (s₀ s₉ : State) : Prop :=
   ∃ bodyFuel sBody,
     AFunc bodyFuel (👌 s₀.initcall f.params args) sBody ∧
     s₉ = (sBody.reviveJump.overwrite? s₀ |>.setStore s₀).multifill vars (List.map sBody.lookup! f.rets)
 
-def ResolvedFunctionInCode
+@[expose] def ResolvedFunctionInCode
     (code : YulContract) (name : YulFunctionName) (f : FunctionDefinition) : Prop :=
   code.functions.lookup name = some f
 
-def OrdinaryFunctionName (name : YulFunctionName) : Prop :=
+@[expose] def OrdinaryFunctionName (name : YulFunctionName) : Prop :=
   name ≠ "datacopy" ∧ name ≠ "dataoffset" ∧ name ≠ "datasize"
 
-def ResolvedFunction
+@[expose] def ResolvedFunction
     (codeOverride : Option YulContract) (s : State)
     (name : YulFunctionName) (f : FunctionDefinition) : Prop :=
   OrdinaryFunctionName name ∧
@@ -136,7 +148,7 @@ def ResolvedFunction
     | some code => ResolvedFunctionInCode code name f
     | none =>
         ∃ account,
-          s.sharedState.accountMap.find? s.executionEnv.codeOwner = some account ∧
+          s.sharedState.accountMap.get? s.executionEnv.codeOwner = some account ∧
           ResolvedFunctionInCode account.code name f
 
 theorem execObjectDataBuiltin?_none_of_ordinary
@@ -144,15 +156,15 @@ theorem execObjectDataBuiltin?_none_of_ordinary
     (hordinary : OrdinaryFunctionName name) :
     execObjectDataBuiltin? name vars (.ok (s, args)) = none := by
   rcases hordinary with ⟨hdatacopy, _, _⟩
-  cases name <;> simp [execObjectDataBuiltin?] at hdatacopy ⊢
+  cases name; simp [execObjectDataBuiltin?] at hdatacopy ⊢
   split <;> simp_all
 
-def PureFunctionCallVC
+@[expose] def PureFunctionCallVC
     (AFunc : Nat → State → State → Prop) (f : FunctionDefinition)
     (args : List Ast.Literal) (vars : List Identifier) (s₀ s₉ : State) : Prop :=
   FunctionCallSummary AFunc f args vars s₀ s₉
 
-def LoopConcrete
+@[expose] def LoopConcrete
     (ABody APost : State → State → Prop) (ACond : State → Ast.Literal)
     (fuel : Nat) (s₀ s₉ : State) : Prop :=
   match fuel with

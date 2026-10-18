@@ -1,11 +1,22 @@
-import EvmYul.Yul.State
-import EvmYul.Yul.Exception
-import EvmYul.Yul.StateOps
-import EvmYul.SharedStateOps
+module
 
-import EvmYul.UInt256
+public import EvmYul.Yul.State
+public import EvmYul.Yul.Exception
+public import EvmYul.Yul.StateOps
+public import EvmYul.SharedStateOps
 
-import EvmYul.Wheels
+public import EvmYul.UInt256
+
+public import EvmYul.Wheels
+
+/-!
+# Yul primitive operations as state transformers
+
+`Transformer` and the helpers that lift word functions and state updates to Yul state transformers,
+used by the shared semantics `EvmYul.Semantics`.
+-/
+
+public section
 
 namespace EvmYul
 
@@ -13,39 +24,38 @@ namespace Yul
 
 open Lean Parser
 
-set_option autoImplicit true
 
-def Transformer := Yul.State → List Literal → Except Yul.Exception (Yul.State × Option Literal)
+@[expose] def Transformer := Yul.State → List Literal → Except Yul.Exception (Yul.State × Option Literal)
 
-def execUnOp (f : Primop.Unary) : Transformer
+@[expose] def execUnOp (f : Primop.Unary) : Transformer
   | s, [a] => .ok (s, f a)
   | _, _   => throw .InvalidArguments
 
-def execBinOp (f : Primop.Binary) : Transformer
+@[expose] def execBinOp (f : Primop.Binary) : Transformer
   | s, [a, b] => .ok (s, f a b)
   | _, _      => throw .InvalidArguments
 
-def execTriOp (f : Primop.Ternary) : Transformer
+@[expose] def execTriOp (f : Primop.Ternary) : Transformer
   | s, [a, b, c] => .ok (s, f a b c)
   | _, _         => throw .InvalidArguments
 
-def execQuadOp (f : Primop.Quaternary) : Transformer
+@[expose] def execQuadOp (f : Primop.Quaternary) : Transformer
   | s, [a, b, c, d] => .ok (s, f a b c d)
   | _, _            => throw .InvalidArguments
 
-def executionEnvOp (op : ExecutionEnv .Yul → UInt256) : Transformer :=
+@[expose] def executionEnvOp (op : ExecutionEnv .Yul → UInt256) : Transformer :=
   λ yulState _ ↦ .ok (yulState, .some <| op yulState.executionEnv)
 
-def unaryExecutionEnvOp (op : ExecutionEnv .Yul → UInt256 → UInt256) : Transformer :=
+@[expose] def unaryExecutionEnvOp (op : ExecutionEnv .Yul → UInt256 → UInt256) : Transformer :=
   λ yulState lits ↦
     match lits with
     | [a] => .ok (yulState, .some <| op yulState.executionEnv a)
     | _ => .error .InvalidArguments
 
-def machineStateOp (op : MachineState → UInt256) : Transformer :=
+@[expose] def machineStateOp (op : MachineState → UInt256) : Transformer :=
   λ yulState _ ↦ .ok (yulState, .some <| op yulState.toMachineState)
 
-def binaryMachineStateOp
+@[expose] def binaryMachineStateOp
   (op : MachineState → UInt256 → UInt256 → MachineState) : Transformer
 := λ yulState lits ↦
   match lits with
@@ -55,7 +65,7 @@ def binaryMachineStateOp
       .ok <| (yulState', none)
     | _ => .error .InvalidArguments
 
-def binaryMachineStateOp'
+@[expose] def binaryMachineStateOp'
   (op : MachineState → UInt256 → UInt256 → UInt256 × MachineState) : Transformer
 := λ yulState lits ↦
   match lits with
@@ -65,7 +75,7 @@ def binaryMachineStateOp'
       .ok <| (yulState', some val)
     | _ => .error .InvalidArguments
 
-def ternaryMachineStateOp
+@[expose] def ternaryMachineStateOp
   (op : MachineState → UInt256 → UInt256 → UInt256 → MachineState) : Transformer
 := λ yulState lits ↦
   match lits with
@@ -75,7 +85,7 @@ def ternaryMachineStateOp
       .ok <| (yulState', none)
     | _ => .error .InvalidArguments
 
-def binaryStateOp
+@[expose] def binaryStateOp
   (op : EvmYul.State .Yul → UInt256 → UInt256 → EvmYul.State .Yul) : Transformer
 := λ yulState lits ↦
   match lits with
@@ -85,10 +95,10 @@ def binaryStateOp
       .ok <| (yulState', none)
     | _ => .error .InvalidArguments
 
-def stateOp (op : EvmYul.State .Yul → UInt256) : Transformer :=
+@[expose] def stateOp (op : EvmYul.State .Yul → UInt256) : Transformer :=
   λ yulState _ ↦ .ok (yulState, .some <| op yulState.toState)
 
-def unaryStateOp (op : EvmYul.State .Yul → UInt256 → EvmYul.State .Yul × UInt256) : Transformer :=
+@[expose] def unaryStateOp (op : EvmYul.State .Yul → UInt256 → EvmYul.State .Yul × UInt256) : Transformer :=
   λ yulState lits ↦
       match lits with
         | [lit] =>
@@ -98,7 +108,7 @@ def unaryStateOp (op : EvmYul.State .Yul → UInt256 → EvmYul.State .Yul × UI
           .ok (yulState', some b)
         | _ => .error .InvalidArguments
 
-def ternaryCopyOp (op : SharedState .Yul → UInt256 → UInt256 → UInt256 → SharedState .Yul) :
+@[expose] def ternaryCopyOp (op : SharedState .Yul → UInt256 → UInt256 → UInt256 → SharedState .Yul) :
   Transformer
 := λ yulState lits ↦
   match lits with
@@ -108,7 +118,7 @@ def ternaryCopyOp (op : SharedState .Yul → UInt256 → UInt256 → UInt256 →
       .ok (yulState', none)
     | _ => .error .InvalidArguments
 
-def quaternaryCopyOp
+@[expose] def quaternaryCopyOp
   (op : SharedState .Yul → UInt256 → UInt256 → UInt256 → UInt256 → SharedState .Yul) :
   Transformer
 := λ yulState lits ↦
@@ -119,41 +129,41 @@ def quaternaryCopyOp
       .ok (yulState', none)
     | _ => .error .InvalidArguments
 
-private def yulLogOp (yulState : State) (a b : UInt256) (t : Array UInt256) : State × Option Literal :=
+@[expose] def yulLogOp (yulState : State) (a b : UInt256) (t : Array UInt256) : State × Option Literal :=
   let sharedState' := SharedState.logOp a b t yulState.toSharedState
   ( yulState.setSharedState sharedState'
   , none
   )
 
-def log0Op : Transformer :=
+@[expose] def log0Op : Transformer :=
   λ yulState lits ↦
     match lits with
       | [a, b] =>
         .ok <| yulLogOp yulState a b #[]
       | _ => .ok (yulState, none)
 
-def log1Op : Transformer :=
+@[expose] def log1Op : Transformer :=
   λ yulState lits ↦
     match lits with
       | [a, b, c] =>
         .ok <| yulLogOp yulState a b #[c]
       | _ => .ok (yulState, none)
 
-def log2Op : Transformer :=
+@[expose] def log2Op : Transformer :=
   λ yulState lits ↦
     match lits with
       | [a, b, c, d] =>
         .ok <| yulLogOp yulState a b #[c, d]
       | _ => .ok (yulState, none)
 
-def log3Op : Transformer :=
+@[expose] def log3Op : Transformer :=
   λ yulState lits ↦
     match lits with
       | [a, b, c, d, e] =>
         .ok <| yulLogOp yulState a b #[c, d, e]
       | _ => .ok (yulState, none)
 
-def log4Op : Transformer :=
+@[expose] def log4Op : Transformer :=
   λ yulState lits ↦
     match lits with
       | [a, b, c, d, e, f] =>

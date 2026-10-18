@@ -1,8 +1,19 @@
-import Mathlib.Data.Finmap
+module
 
-import EvmYul.Wheels
-import EvmYul.Yul.Wheels
-import EvmYul.SharedState
+public import Mathlib.Data.Finmap
+
+public import EvmYul.Wheels
+public import EvmYul.Yul.VarStore
+public import EvmYul.SharedState
+
+/-!
+# Yul state
+
+`Yul.State`: an ok state (shared state and variable store), the out-of-fuel state, or a checkpoint
+reached by `continue`, `break` or `leave`.
+-/
+
+public section
 
 namespace EvmYul
 
@@ -32,12 +43,12 @@ inductive State where
   | OutOfFuel  : State
   | Checkpoint : Jump → State
 
-instance : Inhabited State where
+@[expose] instance : Inhabited State where
   default := .Ok default default
 
 namespace State
 
-def sharedState : State → EvmYul.SharedState .Yul
+@[expose] def sharedState : State → EvmYul.SharedState .Yul
   | Ok sharedState _ => sharedState
   | _ => default
 

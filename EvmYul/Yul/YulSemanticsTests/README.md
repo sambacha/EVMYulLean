@@ -19,3 +19,10 @@ SOLC_VERSION=0.8.30 solc --optimize --ir-optimized --yul-optimizations 'ho[esj]x
 4. Set up a call, such as in the example of `test₁` in `Main.lean`. Note that the `codeOwner` in the state needs to be set appropriately, such as to the address, `callerAddress` of the smart contract as it has been defined in the state.
 
 5. Due to dependencies on foreign functions, we need to use `lake exe yulSemanticsTests` to run the tests (rather than `#eval`). If necessary modify `lakefile.lean` to run your `.lean` file, see the example of `lean_exe «yulSemanticsTests»`.
+
+## Files
+
+The library children of this folder (layout check L13 keeps this list complete):
+
+- `CallerContracts.lean`: The `Caller` and `Caller2` contracts of the Yul semantics test.
+- `StorageContracts.lean`: The `Storage` and `Storage2` contracts of the Yul semantics test.

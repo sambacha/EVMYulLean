@@ -1,14 +1,24 @@
 -- Requires the following python packages: pycryptodome
 
-import EvmYul.Wheels
-import EvmYul.PerformIO
-import EvmYul.Maps.AccountMap
-import Conform.Wheels
-import EvmYul.EVM.Exception
+module
 
-import EvmYul.State.TrieRoot
+public import EvmYul.Wheels
+public import EvmYul.PerformIO
+public import EvmYul.State.AccountMap
+public import EvmYul.Maps.TrieRoot
+
+/-!
+# Withdrawals
+
+Beacon-chain withdrawals (EIP-4895): their encoding, their trie root and their application to the
+account map.
+-/
+
+public section
 
 open EvmYul ByteArray
+
+@[expose] section
 
 /--
 EIP-4895: Beacon chain push withdrawals as operations.
@@ -23,6 +33,8 @@ structure Withdrawal where
   address : AccountAddress
   amount : UInt64
 deriving Repr, BEq
+
+end
 
 namespace Withdrawal
 
@@ -43,7 +55,7 @@ def Withdrawal.toBlobs (w : ℕ × ByteArray) : Option (String × String) := do
   pure (EvmYul.toHex rlpᵢ, EvmYul.toHex rlp)
 
 -- EIP-4895
-def Withdrawal.computeTrieRoot (ws : Array ByteArray) : Option ByteArray := do
+@[expose] def Withdrawal.computeTrieRoot (ws : Array ByteArray) : Option ByteArray := do
   match Array.mapM Withdrawal.toBlobs ((Array.range ws.size).zip ws) with
     | none => .none
     | some ws => (ByteArray.ofBlob (blobComputeTrieRoot ws)).toOption
@@ -58,7 +70,7 @@ def applyWithdrawals
  where
   applyWithdrawal (σ : AccountMap .EVM) (w : Withdrawal) : AccountMap .EVM :=
     if w.amount <= 0 then σ else
-      match σ.find? w.address with
+      match σ.get? w.address with
         | none =>
           σ.insert w.address {(default : Account .EVM) with balance := .ofNat <| w.amount.toFin.val * 10^9}
         | some ac =>

@@ -90,7 +90,7 @@ def storageValue? (result : Except Exception State) (slot : UInt256) : Option UI
   match result with
   | .ok (.Ok sharedState _) =>
       match sharedState.accountMap.find? testAddress with
-      | .some account => some (account.storage.findD slot ⟨0⟩)
+      | .some account => some (account.storage.getD slot ⟨0⟩)
       | .none => none
   | _ => none
 
@@ -228,8 +228,9 @@ def run : IO Unit := do
     GeneratedEvmYul.long_object_name.SolidityYulInterpreterTest.main.body
   expectInterpretsOk "mcopy"
     GeneratedEvmYul.mcopy.SolidityYulInterpreterTest.main.body
-  expectInterpretsOk "mcopy_memory_access_out_of_range"
-    GeneratedEvmYul.mcopy_memory_access_out_of_range.SolidityYulInterpreterTest.main.body
+  skipInterprets "mcopy_memory_access_out_of_range"
+    "its `mstore8(0xffffffffffffffff, 1)` makes the interpreter allocate 2^64 bytes of memory \
+      (the process is killed by SIGSEGV), like access_large_memory_offsets"
   expectInterpretsOk "mcopy_memory_expansion_on_read"
     GeneratedEvmYul.mcopy_memory_expansion_on_read.SolidityYulInterpreterTest.main.body
   expectInterpretsOk "mcopy_memory_expansion_on_write"

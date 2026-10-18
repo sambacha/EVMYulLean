@@ -1,4 +1,16 @@
-import EvmYul.Yul.State
+module
+
+public import EvmYul.Yul.State
+
+/-!
+# Yul exceptions
+
+The ways a Yul execution stops abnormally: invalid arguments or instructions, out of fuel, a
+static-mode violation, a missing contract or function, `revert`, and the halt that carries the
+final state and value (`YulHalt`).
+-/
+
+public section
 
 namespace EvmYul
 
@@ -18,7 +30,7 @@ inductive Exception where
   | YulHalt (state : Yul.State) (value : UInt256) : Exception
   -- | StopInvoked        : Exception
 
-instance : Repr Exception where
+@[expose] instance : Repr Exception where
   reprPrec s _ :=
     match s with
       | .InvalidArguments => "InvalidArguments"

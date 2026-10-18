@@ -1,0 +1,15 @@
+# Pinned solc compilers for the Yul lowering matrix (docs/SOLC_VYPER_PLAN.md, Steps 1-4 and 6).
+# One line per compiler: version, binary file name on binaries.soliditylang.org/linux-amd64,
+# sha256 of the binary (from that directory's list.json), EVM target, extra columns.
+# The EVM target is the newest fork the compiler accepts that this project's EVM runs: cancun from
+# 0.8.24 on; shanghai (0.8.20-0.8.23) and london (older) are subsets of cancun with the same prices.
+# Extra columns: `-` for none, `ssa` for the experimental `--via-ssa-cfg` code generator.
+# `gen_solc_fixtures.py` downloads each binary into a cache outside the repository and refuses it on
+# a hash mismatch. The last line is the pinned "latest".
+0.8.13 solc-linux-amd64-v0.8.13+commit.abaa5c0e a805dffa86ccd8ed5c9cd18ffcfcca6ff46f635216aa7fc0246546f7be413d62 london -
+0.8.20 solc-linux-amd64-v0.8.20+commit.a1b79de6 0479d44fdf9c501c25337fdc540419f1593b884a87b47f023da4f1c700fda782 shanghai -
+0.8.21 solc-linux-amd64-v0.8.21+commit.d9974bed f2857a898be15c69e8de5598dcd3f3e169e94964a0ce9a0bbb1b111f145a81df shanghai -
+0.8.24 solc-linux-amd64-v0.8.24+commit.e11b9ed9 fb03a29a517452b9f12bcf459ef37d0a543765bb3bbc911e70a87d6a37c30d5f cancun -
+0.8.26 solc-linux-amd64-v0.8.26+commit.8a97fa7a d5f23436f443edb85d8e76906d12f0a86ce0490e7663a9e608efeb7a93f149ef cancun -
+0.8.30 solc-linux-amd64-v0.8.30+commit.73712a01 f3e987dc6ecebd4bd350c48edcbc320b46cf9e3109bd3fc3d88f1acaf4c428f7 cancun -
+0.8.37 solc-linux-amd64-v0.8.37+commit.f401782d 5de843c2c93563cc66425c99a4fb13fdbf32b4c4ae07469480faaf126e14404a cancun ssa

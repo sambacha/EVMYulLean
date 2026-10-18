@@ -1,15 +1,24 @@
-import Mathlib.Data.Finmap
+module
 
-import EvmYul.Yul.Ast
-import EvmYul.Yul.State
-import EvmYul.Yul.PrimOps
-import EvmYul.Yul.StateOps
-import EvmYul.Yul.SizeLemmas
-import EvmYul.Yul.Exception
+public import Mathlib.Data.Finmap
 
-import EvmYul.Semantics
+public import EvmYul.Yul.Ast
+public import EvmYul.Yul.State
+public import EvmYul.Yul.PrimOps
+public import EvmYul.Yul.StateOps
+public import EvmYul.Yul.SizeLemmas
+public import EvmYul.Yul.Exception
 
-set_option maxHeartbeats 400000 -- Needs more than 200000
+public import EvmYul.Semantics
+
+/-!
+# The Yul interpreter
+
+`eval` and `exec`: the fuel-bounded big-step semantics of Yul expressions, statements and function
+calls, with primitive operations run by the shared semantics `EvmYul.Semantics`.
+-/
+
+public section
 
 namespace EvmYul
 
@@ -21,23 +30,23 @@ open Ast SizeLemmas
 --  INTERPRETER
 -- ============================================================================
 
-def head' : Except Yul.Exception (State × List Literal) → Except Yul.Exception (State × Literal)
+@[expose] def head' : Except Yul.Exception (State × List Literal) → Except Yul.Exception (State × Literal)
   | .ok (s, rets) => .ok (s, List.head! rets)
   | .error e => .error e
 
-def cons' (arg : Literal) : Except Yul.Exception (State × List Literal) → Except Yul.Exception (State × List Literal)
+@[expose] def cons' (arg : Literal) : Except Yul.Exception (State × List Literal) → Except Yul.Exception (State × List Literal)
   | .ok (s, args) => .ok (s, arg :: args)
   | .error e => .error e
 
-def reverse' : Except Yul.Exception (State × List Literal) → Except Yul.Exception (State × List Literal)
+@[expose] def reverse' : Except Yul.Exception (State × List Literal) → Except Yul.Exception (State × List Literal)
   | .ok (s, args) => .ok (s, args.reverse)
   | .error e => .error e
 
-def multifill' (vars : List Identifier) : Except Yul.Exception (State × List Literal) → Except Yul.Exception State
+@[expose] def multifill' (vars : List Identifier) : Except Yul.Exception (State × List Literal) → Except Yul.Exception State
   | .ok (s, rets) => .ok (s.multifill vars rets)
   | .error e => .error e
 
-def setStatic (s : State) (p : Bool) : State :=
+@[expose] def setStatic (s : State) (p : Bool) : State :=
   match s with
   | .OutOfFuel => .OutOfFuel
   | .Checkpoint j => .Checkpoint j
@@ -50,7 +59,7 @@ def setStatic (s : State) (p : Bool) : State :=
                         }
     .Ok sharedState' varstore
 
-def buildContractCallEmptyReturnState (s₀ : State) (accountMap₁ : Option (AccountMap .Yul)) (v : Literal) : Except Yul.Exception (State × List Literal) :=
+@[expose] def buildContractCallEmptyReturnState (s₀ : State) (accountMap₁ : Option (AccountMap .Yul)) (v : Literal) : Except Yul.Exception (State × List Literal) :=
     match s₀ with
     | .OutOfFuel => .error .OutOfFuel
     | .Checkpoint j => .ok (.Checkpoint j, [⟨0⟩])
@@ -60,24 +69,24 @@ def buildContractCallEmptyReturnState (s₀ : State) (accountMap₁ : Option (Ac
                                              accountMap := accountMap₁.getD s₀.toSharedState.accountMap }
       .ok (.Ok sharedState₁ varstore, [v])
 
-def objectDataExprName? : Expr → Option Identifier
+@[expose] def objectDataExprName? : Expr → Option Identifier
   | .Var name => some name
   | _ => none
 
-def objectDataOffset : Identifier → UInt256
+@[expose] def objectDataOffset : Identifier → UInt256
   | "main" => .ofNat 0x6e
   | "sub" => .ofNat 0x70c
   | _ => .ofNat 0
 
-def objectDataSize : Identifier → UInt256
+@[expose] def objectDataSize : Identifier → UInt256
   | "main" => .ofNat 0xb64
   | "sub" => .ofNat 0x109
   | _ => .ofNat 0
 
-def objectDataBytes : ByteArray :=
+@[expose] def objectDataBytes : ByteArray :=
   "000000000000codecode".toUTF8
 
-def objectDataCopy (s : State) (mstart dstart size : UInt256) : State :=
+@[expose] def objectDataCopy (s : State) (mstart dstart size : UInt256) : State :=
   let mState := s.toMachineState
   let mState' :=
     writeBytes objectDataBytes dstart.toNat mState mstart.toNat size.toNat
@@ -87,7 +96,7 @@ def objectDataCopy (s : State) (mstart dstart size : UInt256) : State :=
     }
   s.setMachineState mState'
 
-def evalObjectDataBuiltin? (name : YulFunctionName) (args : List Expr) (s : State) :
+@[expose] def evalObjectDataBuiltin? (name : YulFunctionName) (args : List Expr) (s : State) :
     Option (Except Yul.Exception (State × Literal)) :=
   match name, args with
   | "dataoffset", [arg] =>
@@ -96,7 +105,7 @@ def evalObjectDataBuiltin? (name : YulFunctionName) (args : List Expr) (s : Stat
       some <| .ok (s, objectDataSize (Option.getD (objectDataExprName? arg) ""))
   | _, _ => none
 
-def execObjectDataBuiltin? (name : YulFunctionName) (vars : List Identifier) :
+@[expose] def execObjectDataBuiltin? (name : YulFunctionName) (vars : List Identifier) :
     Except Yul.Exception (State × List Literal) → Option (Except Yul.Exception State)
   | .error e => some (.error e)
   | .ok (s, args) =>
@@ -109,7 +118,7 @@ def execObjectDataBuiltin? (name : YulFunctionName) (vars : List Identifier) :
 
 mutual
 
-def primCall (fuel : ℕ) (s₀ : State) (prim : Operation .Yul) (args : List Literal) : Except Yul.Exception (State × List Literal) :=
+@[expose] def primCall (fuel : ℕ) (s₀ : State) (prim : Operation .Yul) (args : List Literal) : Except Yul.Exception (State × List Literal) :=
   do
     match fuel with
     | 0 => .error .OutOfFuel
@@ -135,7 +144,7 @@ def primCall (fuel : ℕ) (s₀ : State) (prim : Operation .Yul) (args : List Li
                   | .OutOfFuel => .error .OutOfFuel
                   | .Checkpoint j => .ok (.Checkpoint j, [⟨0⟩])
                   | .Ok sharedState varstore =>
-                      match s₀.sharedState.accountMap.find? address with
+                      match s₀.sharedState.accountMap.get? address with
                         | .none => 
                           buildContractCallEmptyReturnState s₀ accountMap₁ ⟨1⟩ -- No contract at the provided address, return 1 to indicate success, with empty return data. (Like STOP opcode).
                         | .some yulContract =>
@@ -229,7 +238,7 @@ def primCall (fuel : ℕ) (s₀ : State) (prim : Operation .Yul) (args : List Li
                 | .OutOfFuel => .error .OutOfFuel
                 | .Checkpoint j => .ok (.Checkpoint j, [⟨0⟩])
                 | .Ok sharedState varstore =>
-                    match s₀Static.sharedState.accountMap.find? address with
+                    match s₀Static.sharedState.accountMap.get? address with
                       | .none => 
                           buildContractCallEmptyReturnState s₀Static .none ⟨1⟩ -- No contract at the provided address, return 1 to indicate success, with empty return data. (Like STOP opcode).
                       | .some yulContract =>
@@ -312,7 +321,7 @@ def primCall (fuel : ℕ) (s₀ : State) (prim : Operation .Yul) (args : List Li
                   | .OutOfFuel => .error .OutOfFuel
                   | .Checkpoint j => .ok (.Checkpoint j, [⟨0⟩])
                   | .Ok sharedState varstore =>
-                      match s₀.sharedState.accountMap.find? address with
+                      match s₀.sharedState.accountMap.get? address with
                         | .none => 
                             buildContractCallEmptyReturnState s₀ accountMap₁ ⟨1⟩ -- No contract at the provided address, return 1 to indicate success, with empty return data. (Like STOP opcode).
                         | .some yulContract =>
@@ -390,7 +399,7 @@ def primCall (fuel : ℕ) (s₀ : State) (prim : Operation .Yul) (args : List Li
               | .OutOfFuel => .error .OutOfFuel
               | .Checkpoint j => .ok (.Checkpoint j, [⟨0⟩])
               | .Ok sharedState varstore =>
-                  match s₀.sharedState.accountMap.find? address with
+                  match s₀.sharedState.accountMap.get? address with
                     | .none => 
                       buildContractCallEmptyReturnState s₀ .none ⟨1⟩ -- No contract at the provided address, return 1 to indicate success, with empty return data. (Like STOP opcode).
                     | .some yulContract =>
@@ -455,7 +464,7 @@ def primCall (fuel : ℕ) (s₀ : State) (prim : Operation .Yul) (args : List Li
               | .ok (s, lit) => .ok (s, lit.toList)
               | .error e => .error e
 
-  def evalTail (fuel : Nat) (args : List Expr) (codeOverride : Option YulContract) : Except Yul.Exception (State × Literal) → Except Yul.Exception (State × List Literal)
+  @[expose] def evalTail (fuel : Nat) (args : List Expr) (codeOverride : Option YulContract) : Except Yul.Exception (State × Literal) → Except Yul.Exception (State × List Literal)
     | .ok (s, arg) => 
       match fuel with
       | 0 => .error .OutOfFuel
@@ -465,7 +474,7 @@ def primCall (fuel : ℕ) (s₀ : State) (prim : Operation .Yul) (args : List Li
   /--
     `evalArgs` evaluates a list of arguments.
   -/
-  def evalArgs (fuel : Nat) (args : List Expr) (codeOverride : Option YulContract) (s : State) : Except Yul.Exception (State × List Literal) :=
+  @[expose] def evalArgs (fuel : Nat) (args : List Expr) (codeOverride : Option YulContract) (s : State) : Except Yul.Exception (State × List Literal) :=
     match fuel with
     | 0 => .error .OutOfFuel
     | .succ fuel' =>
@@ -479,11 +488,11 @@ def primCall (fuel : ℕ) (s₀ : State) (prim : Operation .Yul) (args : List Li
     
     Intended for use when a contract is calling one of its own functions, rather than an external contract.
   -/
-  def call (fuel : Nat) (args : List Literal) (yulFunctionNameOption : Option YulFunctionName) (codeOverride : Option YulContract) (s : State) : Except Yul.Exception (State × List Literal) :=
+  @[expose] def call (fuel : Nat) (args : List Literal) (yulFunctionNameOption : Option YulFunctionName) (codeOverride : Option YulContract) (s : State) : Except Yul.Exception (State × List Literal) :=
     match fuel with
       | 0 => .error .OutOfFuel
       | .succ fuel' =>
-        match s.sharedState.accountMap.find? s.executionEnv.codeOwner with
+        match s.sharedState.accountMap.get? s.executionEnv.codeOwner with
         | .none => .error (.MissingContract (s!"{s.executionEnv.codeOwner}")) 
         | .some yulContract =>
           let code : YulContract := codeOverride.getD yulContract.code
@@ -508,7 +517,7 @@ def primCall (fuel : ℕ) (s₀ : State) (prim : Operation .Yul) (args : List Li
     
     It expects the `calldata` and `code` to be appropriately set.
   -/
-  def callDispatcher (fuel : Nat) (codeOverride : Option YulContract) (s : State) : Except Yul.Exception (State × List Literal) :=
+  @[expose] def callDispatcher (fuel : Nat) (codeOverride : Option YulContract) (s : State) : Except Yul.Exception (State × List Literal) :=
     match fuel with
       | 0 => .error .OutOfFuel
       | .succ fuel' =>
@@ -524,22 +533,22 @@ def primCall (fuel : ℕ) (s₀ : State) (prim : Operation .Yul) (args : List Li
   -- error when coarity is > 0 in (1) and when coarity is > 1 in all other
   -- cases.
 
-  def evalPrimCall (fuel : ℕ) (prim : PrimOp) : Except Yul.Exception (State × List Literal) → Except Yul.Exception (State × Literal)
+  @[expose] def evalPrimCall (fuel : ℕ) (prim : PrimOp) : Except Yul.Exception (State × List Literal) → Except Yul.Exception (State × Literal)
     | .ok (s, args) => head' (primCall fuel s prim args)
     | .error e => .error e
 
-  def evalCall (fuel : Nat) (f : YulFunctionName) (codeOverride : Option YulContract) : Except Yul.Exception (State × List Literal) → Except Yul.Exception (State × Literal)
+  @[expose] def evalCall (fuel : Nat) (f : YulFunctionName) (codeOverride : Option YulContract) : Except Yul.Exception (State × List Literal) → Except Yul.Exception (State × Literal)
     | .ok (s, args) =>
       match fuel with
       | 0 => .error .OutOfFuel
       | .succ fuel' => head' (call fuel' args f codeOverride s)
     | .error e => .error e
 
-  def execPrimCall (fuel : ℕ) (prim : PrimOp) (vars : List Identifier) : Except Yul.Exception (State × List Literal) → Except Yul.Exception State
+  @[expose] def execPrimCall (fuel : ℕ) (prim : PrimOp) (vars : List Identifier) : Except Yul.Exception (State × List Literal) → Except Yul.Exception State
     | .ok (s, args) => multifill' vars (primCall fuel s prim args)
     | .error e => .error e
 
-  def execCall (fuel : Nat) (yulFunctionName : YulFunctionName) (vars : List Identifier) (codeOverride : Option YulContract) : Except Yul.Exception (State × List Literal) → Except Yul.Exception State
+  @[expose] def execCall (fuel : Nat) (yulFunctionName : YulFunctionName) (vars : List Identifier) (codeOverride : Option YulContract) : Except Yul.Exception (State × List Literal) → Except Yul.Exception State
     | .ok (s, args) =>
       match fuel with
       | 0 => .error .OutOfFuel
@@ -549,7 +558,7 @@ def primCall (fuel : ℕ) (s₀ : State) (prim : Operation .Yul) (args : List Li
   /--
     `execSwitchCases` executes each case of a `switch` statement.
   -/
-  def execSwitchCases (fuel : Nat) (codeOverride : Option YulContract) (s : State) : List (Literal × List Stmt) → Except Yul.Exception (List (Literal × (Except Yul.Exception State)))
+  @[expose] def execSwitchCases (fuel : Nat) (codeOverride : Option YulContract) (s : State) : List (Literal × List Stmt) → Except Yul.Exception (List (Literal × (Except Yul.Exception State)))
     | [] => .ok []
     | ((val, stmts) :: cases') =>
       match fuel with
@@ -577,7 +586,7 @@ def primCall (fuel : ℕ) (s₀ : State) (prim : Operation .Yul) (args : List Li
 
     - calls evaluated here are assumed to have coarity 1
   -/
-  def eval (fuel : Nat) (expr : Expr) (codeOverride : Option YulContract) (s : State) : Except Yul.Exception (State × Literal) :=
+  @[expose] def eval (fuel : Nat) (expr : Expr) (codeOverride : Option YulContract) (s : State) : Except Yul.Exception (State × Literal) :=
     match fuel with
     | 0 => .error .OutOfFuel
     | .succ fuel' =>
@@ -603,7 +612,7 @@ def primCall (fuel : ℕ) (s₀ : State) (prim : Operation .Yul) (args : List Li
   /--
     `exec` executs a single statement.
   -/
-  def exec (fuel : Nat) (stmt : Stmt) (codeOverride : Option YulContract) (s : State) : Except Yul.Exception State :=
+  @[expose] def exec (fuel : Nat) (stmt : Stmt) (codeOverride : Option YulContract) (s : State) : Except Yul.Exception State :=
     match fuel with
     | 0 => .error .OutOfFuel
     | .succ fuel' =>
@@ -678,7 +687,7 @@ def primCall (fuel : ℕ) (s₀ : State) (prim : Operation .Yul) (args : List Li
   /--
     `loop` executes a for-loop.
   -/
-  def loop (fuel : Nat) (cond : Expr) (post body : List Stmt) (codeOverride : Option YulContract) (s : State) : Except Yul.Exception State :=
+  @[expose] def loop (fuel : Nat) (cond : Expr) (post body : List Stmt) (codeOverride : Option YulContract) (s : State) : Except Yul.Exception State :=
     match fuel with
       | 0 => .error .OutOfFuel
       | 1 => .error .OutOfFuel
@@ -709,7 +718,7 @@ def primCall (fuel : ℕ) (s₀ : State) (prim : Operation .Yul) (args : List Li
                         .ok s₆
 end
 
-def execTopLevel (fuel : Nat) (stmt : Stmt) (s : State) : State :=
+@[expose] def execTopLevel (fuel : Nat) (stmt : Stmt) (s : State) : State :=
   match exec fuel stmt .none s with
     | .error .InvalidArguments => default
     | .error .NotEncodableRLP => default

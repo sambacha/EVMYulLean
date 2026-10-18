@@ -1,4 +1,16 @@
-import EvmYul.Operations
+module
+
+public import EvmYul.Operations
+
+/-!
+# EVM instruction encoding
+
+The byte encoding of every EVM operation (`serializeInstr`), the decoder from an opcode byte
+(`parseInstr`), and the stack effects `δ` (items removed) and `α` (items added) of Yellow Paper
+Appendix H.
+-/
+
+public section
 
 namespace EvmYul
 
@@ -190,7 +202,7 @@ def serializeInstr : Operation .EVM → UInt8
   | .Log l          => serializeLogInstr l
   | .System s       => serializeSysInstr s
 
-def δ : Operation .EVM → Option ℕ
+@[expose] def δ : Operation .EVM → Option ℕ
   | .STOP           => some 0
   | .ADD            => some 2
   | .MUL            => some 2
@@ -309,7 +321,7 @@ def δ : Operation .EVM → Option ℕ
   | .INVALID        => none
   | .SELFDESTRUCT   => some 1
 
-def α : Operation .EVM → Option ℕ
+@[expose] def α : Operation .EVM → Option ℕ
   | .STOP => some 0
   | .ADD => some 1
   | .MUL => some 1
@@ -424,7 +436,7 @@ def α : Operation .EVM → Option ℕ
   | .INVALID => none
   | .SELFDESTRUCT => some 0
 
-def parseInstr : UInt8 → Option (Operation .EVM)
+@[expose] def parseInstr : UInt8 → Option (Operation .EVM)
   | 0x00 => some .STOP
   | 0x01 => some .ADD
   | 0x02 => some .MUL

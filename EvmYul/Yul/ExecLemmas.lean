@@ -1,4 +1,16 @@
-import EvmYul.Yul.Interpreter
+module
+
+public import EvmYul.Yul.Interpreter
+public import EvmYul.ProofTags
+
+/-!
+# Lemmas about the Yul interpreter
+
+Equations for variable lookup and for `exec` / `eval` on literals, variables, `let`, blocks and
+primitive calls at small fuel, used by the reasoning principles and the relational proofs.
+-/
+
+public section
 
 namespace EvmYul
 namespace Yul
@@ -12,30 +24,30 @@ theorem ok_match_ok_else_self (s : State) :
      | _ => Except.ok s) = (Except.ok s : Except Exception State) := by
   cases s <;> rfl
 
-@[simp]
+@[simp, reviewed_rfl "the Yul step of a primitive, by definition"]
 theorem step_yul_add (s : State) (a b : UInt256) :
     step (Operation.ADD : Operation .Yul) none s [a, b] =
       .ok (s, some (UInt256.add a b)) := by
   rfl
 
-@[simp]
+@[simp, reviewed_rfl "the Yul step of a primitive, by definition"]
 theorem step_yul_sub (s : State) (a b : UInt256) :
     step (Operation.SUB : Operation .Yul) none s [a, b] =
       .ok (s, some (UInt256.sub a b)) := by
   rfl
 
-@[simp]
+@[simp, reviewed_rfl "the Yul step of a primitive, by definition"]
 theorem step_yul_eq (s : State) (a b : UInt256) :
     step (Operation.EQ : Operation .Yul) none s [a, b] =
       .ok (s, some (UInt256.eq a b)) := by
   rfl
 
-@[simp]
+@[simp, reviewed_rfl "Yul variable store API, by definition"]
 theorem getElem_eq_lookup (s : State) (id : Identifier) (h : id ∈ s.store) :
     s[id] = State.lookup! id s := by
   rfl
 
-def lookupVar (s : State) (id : Identifier) : Literal :=
+@[expose] def lookupVar (s : State) (id : Identifier) : Literal :=
   s[id]!
 
 theorem lookupVar_ok_eq_lookup!
@@ -46,7 +58,7 @@ theorem lookupVar_ok_eq_lookup!
   · simp [lookupVar, GetElem?.getElem!, decidableGetElem?, State.store,
       State.instGetElemIdentifierLiteralMemVarStoreStore, State.lookup!, hmem]
   · simp [lookupVar, GetElem?.getElem!, decidableGetElem?, State.store,
-      State.instGetElemIdentifierLiteralMemVarStoreStore, State.lookup!, hmem,
+      State.lookup!, hmem,
       Finmap.lookup_eq_none.mpr hmem, outOfBounds_eq_default]
 
 @[simp]
@@ -58,7 +70,7 @@ theorem lookupVar_ok_sharedState_irrelevant
   rw [lookupVar_ok_eq_lookup!, lookupVar_ok_eq_lookup!]
   rfl
 
-@[simp]
+@[simp, reviewed_rfl "variable lookup reads only the variable store, by definition"]
 theorem lookup!_ok_sharedState_irrelevant
     (sharedState sharedState2 : EvmYul.SharedState .Yul) (store : VarStore)
     (id : Identifier) :
@@ -261,7 +273,7 @@ theorem eval_eq_var_lit_succ7
       (.Call (Sum.inl Operation.EQ) [.Var x, .Lit n])
       codeOverride s =
       .ok (s, UInt256.eq (lookupVar s x) n) := by
-  simp [eval, evalArgs, evalTail, reverse', cons', primCall, lookupVar]
+  simp [eval, evalArgs, evalTail, reverse', cons', lookupVar]
 
 @[simp]
 theorem exec_block_single_let_add_var_lit_succ7
@@ -301,7 +313,7 @@ theorem exec_if_eq_var_lit_break_succ7
       (.If (.Call (Sum.inl Operation.EQ) [.Var x, .Lit n]) [.Break])
       codeOverride s =
       .ok (if UInt256.eq (lookupVar s x) n ≠ ⟨0⟩ then 💔 s else s) := by
-  simp [exec, eval, evalArgs, evalTail, reverse', cons', primCall, lookupVar]
+  simp [exec, eval, evalArgs, evalTail, reverse', cons', lookupVar]
   split <;> rfl
 
 @[simp]

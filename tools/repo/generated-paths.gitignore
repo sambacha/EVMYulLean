@@ -1,0 +1,15 @@
+# Generated or fetched paths that git must not track. This file is the single list read by
+# `restore-after-reimport.sh` (which appends any missing line to the root `.gitignore`) and by the
+# re-import tests in `Audits/Upgrade.lean`. Keep one pattern per line.
+EthereumTests/
+tests_*.txt
+__pycache__/
+*.pyc
+python/EllipticCurvesPy/trieInput_*.txt
+# Output of the VC generator (`vc/README.md`): anchored, so only the repository-root paths match.
+/GeneratedEvmYul/
+/GeneratedEvmYul.lean
+# The Solidity Yul corpus, fetched by `lake run fetchSolidity` (pinned in `tools/solidity/solidity.lock`).
+/solidity/
+# Haskell build directory of the VC generator (`stack build` in `vc/`).
+.stack-work/

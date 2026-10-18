@@ -1,0 +1,9 @@
+# The Solidity repository, whose `test/libyul/yulInterpreterTests` corpus is read by
+# `vc/test-solidity-yul-interpreter.sh` and, through the generated modules, by the
+# `solidityYulInterpreterTests` executable.
+# Single source of truth for the pin: read by `lake run fetchSolidity` (lakefile.lean), by
+# `vc/check-solidity-pin.sh` (which the harness runs first) and by `Conform.SolidityPinTests`.
+# `tag` is informational: `fetchSolidity` fetches the tag and fails unless it resolves to `commit`.
+url=https://github.com/argotorg/solidity.git
+tag=v0.8.35
+commit=47b9dedda00ef23974eca07c06c97cc1c80088b4

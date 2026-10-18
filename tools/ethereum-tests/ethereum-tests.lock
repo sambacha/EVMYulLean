@@ -1,0 +1,7 @@
+# The ethereum/tests conformance corpus run by `lake exe conform`.
+# Single source of truth for the pin: read by `lake run fetchTests` (lakefile.lean) and by
+# `Conform.Corpus` (which refuses to run the suite against any other commit).
+# `tag` is informational: `fetchTests` fetches the tag and fails unless it resolves to `commit`.
+url=https://github.com/ethereum/tests.git
+tag=v14.1
+commit=9201075490807f58811078e9bb5ec895b4ac01a5

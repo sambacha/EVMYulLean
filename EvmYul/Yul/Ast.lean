@@ -1,10 +1,17 @@
-/- Yul specification:
-https://docs.soliditylang.org/en/v0.8.9/yul.html
+module
+
+public import EvmYul.UInt256
+public import EvmYul.Operations
+public import EvmYul.Wheels
+
+/-!
+# Yul abstract syntax
+
+Identifiers, literals, expressions, statements, function definitions and contracts of Yul
+(https://docs.soliditylang.org/en/v0.8.9/yul.html).
 -/
 
-import EvmYul.UInt256
-import EvmYul.Operations
-import EvmYul.Wheels
+public section
 
 namespace EvmYul
 
@@ -17,20 +24,22 @@ open EvmYul UInt256
 abbrev Literal := UInt256
 -- def Identifier := String
 
-instance : ToString Identifier := inferInstanceAs (ToString String)
+@[expose] instance : ToString Identifier := inferInstanceAs (ToString String)
 
-instance : Inhabited Identifier := ⟨""⟩
-instance : DecidableEq Identifier := String.decEq
+@[expose] instance : Inhabited Identifier := ⟨""⟩
+@[expose] instance : DecidableEq Identifier := String.decEq
 
 abbrev PrimOp := Operation .Yul
 
 def stringOfPrimOp : PrimOp → String := toString ∘ repr
 
-instance : ToString PrimOp := ⟨stringOfPrimOp⟩
+@[expose] instance : ToString PrimOp := ⟨stringOfPrimOp⟩
 
 -- https://docs.soliditylang.org/en/latest/yul.html#informal-description-of-yul
 
 abbrev YulFunctionName := String
+
+@[expose] section
 
 mutual
   inductive FunctionDefinition where
@@ -57,15 +66,21 @@ mutual
     deriving BEq, Inhabited, Repr
 end
 
+end
+
+@[expose] section
+
 structure YulContract where
   dispatcher : Yul.Ast.Stmt
   functions : Finmap (fun (_ : YulFunctionName) ↦ Yul.Ast.FunctionDefinition)
   deriving Inhabited
 
-instance : Repr YulContract where
+end
+
+@[expose] instance : Repr YulContract where
   reprPrec _ _ := "YulContract" -- TODO: implement an actual `reprPrec` for YulContract
 
-instance : BEq YulContract where
+@[expose] instance : BEq YulContract where
   beq a b := 
     a.dispatcher == b.dispatcher
     && (a.functions.keys == b.functions.keys &&
@@ -76,17 +91,17 @@ abbrev contractCode (τ : OperationType) :=
     | OperationType.EVM => ByteArray
     | OperationType.Yul => YulContract
 
-instance {τ} : BEq (contractCode τ) where
+@[expose] instance {τ} : BEq (contractCode τ) where
   beq a b := match τ with
               | .EVM => a == b
               | .Yul => a == b
 
-instance {τ} : Inhabited (contractCode τ) where
+@[expose] instance {τ} : Inhabited (contractCode τ) where
   default := match τ with
                 | .EVM => default
                 | .Yul => default
               
-instance {τ} : Repr (contractCode τ) where
+@[expose] instance {τ} : Repr (contractCode τ) where
   reprPrec a _ := match τ with
                      | .EVM => reprPrec a 0
                      | .Yul => reprPrec a 0
@@ -94,13 +109,13 @@ instance {τ} : Repr (contractCode τ) where
 
 namespace FunctionDefinition
 
-def params : FunctionDefinition → List Identifier
+@[expose] def params : FunctionDefinition → List Identifier
   | Def params _ _ => params
 
-def rets : FunctionDefinition → List Identifier
+@[expose] def rets : FunctionDefinition → List Identifier
   | Def _ rets _ => rets
 
-def body : FunctionDefinition → List Stmt
+@[expose] def body : FunctionDefinition → List Stmt
   | Def _ _ body => body
 
 end FunctionDefinition

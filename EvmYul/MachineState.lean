@@ -1,17 +1,30 @@
-import Batteries
+module
 
-import EvmYul.Maps.ByteMap
-import EvmYul.UInt256
-import Batteries.Data.HashMap
+public import Batteries
+
+public import EvmYul.Maps.ByteMap
+public import EvmYul.UInt256
+public import Batteries.Data.HashMap
+
+/-!
+# Machine state shared by the EVM and Yul
+
+`MachineState` (`μ` of the Yellow Paper, without stack and program counter): the gas available,
+the active word count, the memory and the return data.
+-/
+
+public section
 
 namespace EvmYul
 
 open Batteries
 
-instance : DecidableEq ByteArray
+@[expose] instance : DecidableEq ByteArray
   | a, b => match decEq a.data b.data with
     | isTrue  h₁ => isTrue <| congrArg ByteArray.mk h₁
     | isFalse h₂ => isFalse <| λ h ↦ by cases h; exact (h₂ rfl)
+
+@[expose] section
 
 /--
 The partial shared `MachineState` `μ`. Section 9.4.1.
@@ -27,6 +40,8 @@ structure MachineState where
   returnData          : ByteArray
   H_return            : ByteArray
   deriving Inhabited
+
+end
 
 -- inductive WordSize := | Standard | Single
 

@@ -1,29 +1,56 @@
-import Mathlib.Data.Finset.Basic
+module
 
-import EvmYul.State.BlockHeader
-import EvmYul.State.Transaction
-import EvmYul.State.Withdrawal
+public import EvmYul.FFI.Primitives
+public import Mathlib.Data.Finset.Basic
+
+public import EvmYul.State.BlockHeader
+public import EvmYul.State.Transaction
+public import EvmYul.State.Withdrawal
+public import EvmYul.EVMException
+
+/-!
+# Blocks
+
+Blocks, their transactions, ommers and withdrawals, and their RLP decoding (which raises
+`EVM.Exception` on malformed input).
+-/
+
+public section
 
 namespace EvmYul
 
-instance : Repr (Finset BlockHeader) := ⟨λ _ _ ↦ "Dummy Repr for ommers. TODO - change this :)."⟩
+@[expose] instance : Repr (Finset BlockHeader) := ⟨λ _ _ ↦ "Dummy Repr for ommers. TODO - change this :)."⟩
+
+@[expose] section
 
 structure Transactions where
   trieRoot : ByteArray
   array : Array Transaction
 deriving BEq, Inhabited, Repr
 
+end
+
+@[expose] section
+
 structure Withdrawals where
   trieRoot : ByteArray
   array : Array Withdrawal
 deriving BEq, Inhabited, Repr
+
+end
+
+@[expose] section
 
 structure RawBlock where
   rlp          : ByteArray
   exception    : List String
 deriving BEq, Inhabited, Repr
 
+end
+
 abbrev RawBlocks := Array RawBlock
+
+@[expose] section
 
 structure DeserializedBlock where
   hash         : UInt256
@@ -33,13 +60,19 @@ structure DeserializedBlock where
   exception    : List String
 deriving BEq, Inhabited, Repr
 
+end
+
 abbrev DeserializedBlocks := Array DeserializedBlock
+
+@[expose] section
 
 structure ProcessedBlock where
   hash        : UInt256
   blockHeader : BlockHeader
   σ           : AccountMap .EVM
 deriving Inhabited
+
+end
 
 abbrev ProcessedBlocks := Array ProcessedBlock
 
