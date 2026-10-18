@@ -1,7 +1,19 @@
-import EvmYul.UInt256
-import EvmYul.Wheels
+module
+
+public import EvmYul.UInt256
+public import EvmYul.Wheels
+
+/-!
+# Block headers
+
+`BlockHeader` and the header-derived values: excess blob gas and the blob base fee (EIP-4844).
+-/
+
+public section
 
 namespace EvmYul
+
+@[expose] section
 
 /--
 `BlockHeader`. `H_<x>`. Section 4.3.
@@ -33,7 +45,8 @@ structure BlockHeader where
   transRoot     : ByteArray
   receiptRoot   : ByteArray
   logsBloom     : ByteArray
-  -- Officially deprecated, but checked in `wrongDifficulty_Cancun`
+  -- Deprecated by the Merge (EIP-3675), but still validated: a post-Merge header must carry
+  -- difficulty `0`.
   difficulty    : ℕ
   number        : ℕ
   gasLimit      : ℕ
@@ -48,6 +61,8 @@ structure BlockHeader where
   blobGasUsed     : UInt64
   excessBlobGas   : UInt64
 deriving DecidableEq, Inhabited, Repr, BEq
+
+end
 
 def prettyDifference (h₁ h₂ : BlockHeader) : String := Id.run do
   let mut result := ""
@@ -92,13 +107,13 @@ partial def fakeExponential0 (i output factor numerator denominator : ℕ) : (nu
     let i := i + 1
     fakeExponential0 i output factor numerator denominator numeratorAccum
 
-def fakeExponential (factor numerator denominator : ℕ) : ℕ :=
+@[expose] def fakeExponential (factor numerator denominator : ℕ) : ℕ :=
   fakeExponential0 1 0 factor numerator denominator (factor * denominator)
 
-def MIN_BASE_FEE_PER_BLOB_GAS := 1
-def BLOB_BASE_FEE_UPDATE_FRACTION := 3338477
+@[expose] def MIN_BASE_FEE_PER_BLOB_GAS := 1
+@[expose] def BLOB_BASE_FEE_UPDATE_FRACTION := 3338477
 
-def BlockHeader.getBlobGasprice (h : BlockHeader) : ℕ :=
+@[expose] def BlockHeader.getBlobGasprice (h : BlockHeader) : ℕ :=
   fakeExponential
     MIN_BASE_FEE_PER_BLOB_GAS
     h.excessBlobGas.toNat

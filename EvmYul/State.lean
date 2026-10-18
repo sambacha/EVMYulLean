@@ -1,41 +1,25 @@
-import Batteries.Data.RBMap
-import Mathlib.Data.Finset.Basic
+module
 
-import EvmYul.State.ExecutionEnv
-import EvmYul.State.Substate
-import EvmYul.State.Account
-import EvmYul.State.Block
-import EvmYul.State.Substate
-import EvmYul.State.Transaction
+public import EvmYul.State.Account
+public import EvmYul.State.AccountMap
+public import EvmYul.State.AccountMapLemmas
+public import EvmYul.State.AccountOps
+public import EvmYul.State.Basic
+public import EvmYul.State.BasicOps
+public import EvmYul.State.Block
+public import EvmYul.State.BlockHeader
+public import EvmYul.State.ExecutionEnv
+public import EvmYul.State.Substate
+public import EvmYul.State.SubstateLemmas
+public import EvmYul.State.SubstateOps
+public import EvmYul.State.Transaction
+public import EvmYul.State.TransactionOps
+public import EvmYul.State.Withdrawal
 
-import EvmYul.Maps.AccountMap
+/-!
+# `EvmYul.State`
 
-import EvmYul.UInt256
-import EvmYul.Wheels
-
-namespace EvmYul
-
-/--
-The `State`. Section 9.3.
-
-- `accountMap`   `σ`
-- `substate`     `A`
-- `executionEnv` `I`
-- `totalGasUsedInBlock` `Υᵍ`
+Parent file of `EvmYul/State/`: imports the folder's modules and the parent file of
+each subfolder (`GUIDELINES.md` §3, kept in step by `tools/repo/sync-layout.py`,
+checked by `Audits.Layout`). Holds no declarations.
 -/
-structure State (τ : OperationType) where
-  accountMap          : AccountMap τ
-  σ₀                  : AccountMap .EVM
-  totalGasUsedInBlock : ℕ
-  transactionReceipts  : Array TransactionReceipt
-  substate            : Substate
-  executionEnv        : ExecutionEnv τ
-  blocks              : ProcessedBlocks
-  genesisBlockHeader  : BlockHeader
-  createdAccounts     : Batteries.RBSet AccountAddress compare
-deriving Inhabited
-
-def State.blockHashes {τ} (self : State τ) : Array UInt256 :=
-  self.blocks.map ProcessedBlock.hash
-
-end EvmYul

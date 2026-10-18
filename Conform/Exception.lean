@@ -1,4 +1,15 @@
-import EvmYul.EVM.Exception
+module
+
+public import EvmYul
+
+/-!
+# Conformance-runner exceptions
+
+The errors of the conformance runner itself, as opposed to EVM exceptions: a test whose JSON is
+malformed (`CannotParse`), and a test file whose structure is not the expected one
+(`InvalidTestStructure`).
+-/
+public section
 
 namespace EvmYul
 

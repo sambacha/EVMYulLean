@@ -1,0 +1,6 @@
+# Pinned Vyper compilers for the V1 bytecode fixtures (docs/VYPER_V1_PLAN.md).
+# One line per compiler: version, wheel file name, sha256 of the wheel (from PyPI), download URL.
+# `gen_vyper_fixtures.py` downloads the wheel, refuses it on a hash mismatch, and installs it into a
+# private virtual environment outside the repository. The last line is the pinned "latest".
+0.4.0 vyper-0.4.0-py3-none-any.whl 22d7e1eca229e95a909dc971ff5b1685c8379404e3fc3b7b84dbc59b5de1c262 https://files.pythonhosted.org/packages/37/0b/7c14ae8aec83187a67d8c13a4fdff9bc4d72d9ef822ec7ce026b301a00cb/vyper-0.4.0-py3-none-any.whl
+0.4.3 vyper-0.4.3-py3-none-any.whl 3b9671727c888363740dc678e60336759871487d0e4e9fdd973048fa9635c4fd https://files.pythonhosted.org/packages/f3/45/ad3c7d78aaa3e50d229968bc39eaf193f9b8eee79b5f16a3bed8f35e1395/vyper-0.4.3-py3-none-any.whl

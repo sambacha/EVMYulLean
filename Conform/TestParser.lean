@@ -1,13 +1,18 @@
-import Lean.Data.Json
+module
 
-import EvmYul.Wheels
-import EvmYul.Operations
-import EvmYul.EVM.Semantics
-import EvmYul.Wheels
-import EvmYul.State.Withdrawal
+public import Lean.Data.Json
 
-import Conform.Model
-import Conform.Wheels
+public import EvmYul
+public import Conform.Model
+
+/-!
+# JSON parser for the conformance tests
+
+`FromJson` instances that read a `BlockchainTests` fixture into the model of `Conform.Model`: words,
+addresses, storage, blocks, transactions and withdrawals, from their hex blob encodings.
+-/
+
+public section
 
 namespace EvmYul
 
@@ -19,7 +24,7 @@ section FromJson
 
 open Lean (FromJson Json)
 
-private def fromBlobString {α} (f : Blob → Except String α) : FromJson α :=
+def fromBlobString {α} (f : Blob → Except String α) : FromJson α :=
   {
     fromJson? := λ json ↦ json.getStr? >>= (getBlob? · >>= f)
   }
@@ -75,7 +80,7 @@ instance : FromJson BlockHeader where
         excessBlobGas         := ← json.getObjValAsD! UInt64         "excessBlobGas"
       }
     catch ε => dbg_trace s!"Cannot parse BlockHeader: {ε}\n json: {json}"
-               default
+               Inhabited.default
 
 instance : FromJson AccessListEntry where
   fromJson? json := do
@@ -143,7 +148,7 @@ instance : FromJson Transaction where
 - Format₀: `EthereumTests/BlockchainTests/GeneralStateTests/VMTests/vmArithmeticTest/add.json`
 - Format₁: `EthereumTests/BlockchainTests/GeneralStateTests/Pyspecs/cancun/eip4844_blobs/invalid_static_excess_blob_gas.json`
 -/
-private def blockOfJson (json : Json) : Except String RawBlock := do
+def blockOfJson (json : Json) : Except String RawBlock := do
   -- The exception, if exists, is always in the outermost object regardless of the `<Format>` (see this function's docs).
   let exception ← json.getObjValAsD! (Option String) "expectException"
   let rlp ← json.getObjValAsD! ByteArray "rlp"
@@ -182,7 +187,7 @@ instance : FromJson TestMap where
 end FromJson
 
 def testNamesOfTest (test : Lean.Json) : Except String (Array String) :=
-  test.getObj? <&> (·.toArray.map Sigma.fst)
+  test.getObj? <&> (·.keysArray)
 
 section PrettyPrinter
 

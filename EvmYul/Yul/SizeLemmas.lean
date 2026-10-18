@@ -1,4 +1,16 @@
-import EvmYul.Yul.Ast
+module
+
+public import EvmYul.Yul.Ast
+public import EvmYul.ProofTags
+
+/-!
+# Size lemmas for Yul syntax
+
+`sizeOf` facts about Yul expressions, statements and lists, the termination measures of the
+interpreter.
+-/
+
+public section
 
 namespace EvmYul
 
@@ -24,10 +36,10 @@ variable {expr arg : Expr}
 --  SIZEOF LEMMAS
 -- ============================================================================
 
-@[simp]
+@[simp, reviewed_generic "termination measure helper"]
 lemma Zero.zero_le {n : ℕ} : Zero.zero ≤ n := by ring_nf; exact Nat.zero_le _
 
-@[simp]
+@[simp, reviewed_generic "termination measure helper"]
 lemma List.zero_lt_sizeOf : 0 < sizeOf xs
 := by
   rcases xs <;> simp

@@ -1,56 +1,65 @@
-import EvmYul.Operations
+module
 
-import EvmYul.Yul.State
-import EvmYul.Yul.Ast
-import EvmYul.Yul.Exception
-import EvmYul.Yul.PrimOps
-import EvmYul.Yul.StateOps
+public import EvmYul.Operations
 
-import EvmYul.EVM.State
-import EvmYul.EVM.Exception
-import EvmYul.EVM.PrimOps
-import EvmYul.EVM.StateOps
-import EvmYul.Wheels
+public import EvmYul.Yul.State
+public import EvmYul.Yul.Ast
+public import EvmYul.Yul.Exception
+public import EvmYul.Yul.PrimOps
+public import EvmYul.Yul.StateOps
 
-import EvmYul.UInt256
-import EvmYul.StateOps
-import EvmYul.SharedStateOps
-import EvmYul.MachineStateOps
+public import EvmYul.EVM.State
+public import EvmYul.EVMException
+public import EvmYul.EVM.PrimOps
+public import EvmYul.EVM.StateOps
+public import EvmYul.Wheels
 
-import EvmYul.SpongeHash.Keccak256
+public import EvmYul.UInt256
+public import EvmYul.State.BasicOps
+public import EvmYul.SharedStateOps
+public import EvmYul.MachineStateOps
+
+public import EvmYul.SpongeHash.Keccak256
 
 --
 
-import Mathlib.Data.BitVec
-import Mathlib.Data.Array.Defs
-import Mathlib.Data.Finmap
-import Mathlib.Data.List.Defs
-import EvmYul.Data.Stack
+public import Mathlib.Data.BitVec
+public import Mathlib.Data.Array.Defs
+public import Mathlib.Data.Finmap
+public import Mathlib.Data.List.Defs
+public import EvmYul.Stack
+public import EvmYul.State.AccountMap
+public import EvmYul.State.AccountMap
+public import EvmYul.State.AccountOps
+public import EvmYul.State.ExecutionEnv
+public import EvmYul.State.Substate
+public import EvmYul.State.TransactionOps
 
-import EvmYul.Maps.AccountMap
-import EvmYul.Maps.AccountMap
+public import EvmYul.EVMException
+public import EvmYul.EVM.Gas.Costs
+public import EvmYul.EVM.Gas.Constants
+public import EvmYul.EVM.State
+public import EvmYul.EVM.StateOps
+public import EvmYul.EVMException
+public import EvmYul.EVM.Instr
+public import EvmYul.EVM.PrecompiledContracts.Contracts
+public import EvmYul.Operations
+public import EvmYul.Pretty
+public import EvmYul.SharedStateOps
+public import EvmYul.Wheels
+public import EvmYul.EllipticCurves
+public import EvmYul.UInt256
+public import EvmYul.MachineState
 
-import EvmYul.State.AccountOps
-import EvmYul.State.ExecutionEnv
-import EvmYul.State.Substate
-import EvmYul.State.TransactionOps
+/-!
+# Instruction semantics shared by the EVM and Yul
 
-import EvmYul.EVM.Exception
-import EvmYul.EVM.Gas
-import EvmYul.EVM.GasConstants
-import EvmYul.EVM.State
-import EvmYul.EVM.StateOps
-import EvmYul.EVM.Exception
-import EvmYul.EVM.Instr
-import EvmYul.EVM.PrecompiledContracts
+`step` for both machines: dispatches every operation to its transformer, written once over the
+shared state and run by the EVM interpreter (`EVM/Semantics`) and the Yul interpreter
+(`Yul/Interpreter`).
+-/
 
-import EvmYul.Operations
-import EvmYul.Pretty
-import EvmYul.SharedStateOps
-import EvmYul.Wheels
-import EvmYul.EllipticCurves
-import EvmYul.UInt256
-import EvmYul.MachineState
+public section
 
 --
 
@@ -69,56 +78,56 @@ open Stack
 
 Both operations happen in their respecitve `.Exception` error monad.
 -/
-private abbrev Transformer : OperationType → Type
+@[expose] abbrev Transformer : OperationType → Type
   | .EVM => EVM.Transformer
   | .Yul => Yul.Transformer
 
-private def dispatchInvalid (τ : OperationType) : Transformer τ :=
+@[expose] def dispatchInvalid (τ : OperationType) : Transformer τ :=
   match τ with
     | .EVM => λ _ ↦ .error .InvalidInstruction
     | .Yul => λ _ _ ↦ .error Yul.Exception.InvalidInstruction
 
-private def dispatchUnary (τ : OperationType) : Primop.Unary → Transformer τ :=
+@[expose] def dispatchUnary (τ : OperationType) : Primop.Unary → Transformer τ :=
   match τ with
     | .EVM => EVM.execUnOp
     | .Yul => Yul.execUnOp
 
-private def dispatchBinary (τ : OperationType) : Primop.Binary → Transformer τ :=
+@[expose] def dispatchBinary (τ : OperationType) : Primop.Binary → Transformer τ :=
   match τ with
     | .EVM => EVM.execBinOp
     | .Yul => Yul.execBinOp
 
-private def dispatchTernary (τ : OperationType) : Primop.Ternary → Transformer τ :=
+@[expose] def dispatchTernary (τ : OperationType) : Primop.Ternary → Transformer τ :=
   match τ with
     | .EVM => EVM.execTriOp
     | .Yul => Yul.execTriOp
 
-private def dispatchQuartiary (τ : OperationType) : Primop.Quaternary → Transformer τ :=
+@[expose] def dispatchQuartiary (τ : OperationType) : Primop.Quaternary → Transformer τ :=
   match τ with
     | .EVM => EVM.execQuadOp
     | .Yul => Yul.execQuadOp
 
-private def dispatchExecutionEnvOp (τ : OperationType) (op : ExecutionEnv τ → UInt256) : Transformer τ :=
+@[expose] def dispatchExecutionEnvOp (τ : OperationType) (op : ExecutionEnv τ → UInt256) : Transformer τ :=
   match τ with
     | .EVM => EVM.executionEnvOp op
     | .Yul => Yul.executionEnvOp op
 
-private def dispatchUnaryExecutionEnvOp (τ : OperationType) (op : ExecutionEnv τ → UInt256 → UInt256) : Transformer τ :=
+@[expose] def dispatchUnaryExecutionEnvOp (τ : OperationType) (op : ExecutionEnv τ → UInt256 → UInt256) : Transformer τ :=
   match τ with
     | .EVM => EVM.unaryExecutionEnvOp op
     | .Yul => Yul.unaryExecutionEnvOp op
 
-private def dispatchMachineStateOp (τ : OperationType) (op : MachineState → UInt256) : Transformer τ :=
+@[expose] def dispatchMachineStateOp (τ : OperationType) (op : MachineState → UInt256) : Transformer τ :=
   match τ with
     | .EVM => EVM.machineStateOp op
     | .Yul => Yul.machineStateOp op
 
-private def dispatchUnaryStateOp (τ : OperationType) (op : State τ → UInt256 → State τ × UInt256) : Transformer τ :=
+@[expose] def dispatchUnaryStateOp (τ : OperationType) (op : State τ → UInt256 → State τ × UInt256) : Transformer τ :=
   match τ with
     | .EVM => EVM.unaryStateOp op
     | .Yul => Yul.unaryStateOp op
 
-private def dispatchTernaryCopyOp
+@[expose] def dispatchTernaryCopyOp
  (τ : OperationType) (op : SharedState τ → UInt256 → UInt256 → UInt256 → SharedState τ) :
   Transformer τ
 :=
@@ -126,7 +135,7 @@ private def dispatchTernaryCopyOp
     | .EVM => EVM.ternaryCopyOp op
     | .Yul => Yul.ternaryCopyOp op
 
-private def dispatchQuaternaryCopyOp
+@[expose] def dispatchQuaternaryCopyOp
  (τ : OperationType) (op : SharedState τ → UInt256 → UInt256 → UInt256 → UInt256 → SharedState τ) :
   Transformer τ
 :=
@@ -134,7 +143,7 @@ private def dispatchQuaternaryCopyOp
     | .EVM => EVM.quaternaryCopyOp op
     | .Yul => Yul.quaternaryCopyOp op
 
-private def dispatchBinaryMachineStateOp
+@[expose] def dispatchBinaryMachineStateOp
  (τ : OperationType) (op : MachineState → UInt256 → UInt256 → MachineState) :
   Transformer τ
 :=
@@ -142,7 +151,7 @@ private def dispatchBinaryMachineStateOp
     | .EVM => EVM.binaryMachineStateOp op
     | .Yul => Yul.binaryMachineStateOp op
 
-private def dispatchTernaryMachineStateOp
+@[expose] def dispatchTernaryMachineStateOp
  (τ : OperationType) (op : MachineState → UInt256 → UInt256 → UInt256 → MachineState) :
   Transformer τ
 :=
@@ -150,7 +159,7 @@ private def dispatchTernaryMachineStateOp
     | .EVM => EVM.ternaryMachineStateOp op
     | .Yul => Yul.ternaryMachineStateOp op
 
-private def dispatchBinaryMachineStateOp'
+@[expose] def dispatchBinaryMachineStateOp'
  (τ : OperationType) (op : MachineState → UInt256 → UInt256 → UInt256 × MachineState) :
   Transformer τ
 :=
@@ -158,7 +167,7 @@ private def dispatchBinaryMachineStateOp'
     | .EVM => EVM.binaryMachineStateOp' op
     | .Yul => Yul.binaryMachineStateOp' op
 
-private def dispatchBinaryStateOp
+@[expose] def dispatchBinaryStateOp
  (τ : OperationType) (op : State τ → UInt256 → UInt256 → State τ) :
   Transformer τ
 :=
@@ -166,39 +175,39 @@ private def dispatchBinaryStateOp
     | .EVM => EVM.binaryStateOp op
     | .Yul => Yul.binaryStateOp op
 
-private def dispatchStateOp (τ : OperationType) (op : State τ → UInt256) : Transformer τ :=
+@[expose] def dispatchStateOp (τ : OperationType) (op : State τ → UInt256) : Transformer τ :=
   match τ with
     | .EVM => EVM.stateOp op
     | .Yul => Yul.stateOp op
 
-private def dispatchLog0 (τ : OperationType) : Transformer τ :=
+@[expose] def dispatchLog0 (τ : OperationType) : Transformer τ :=
   match τ with
     | .EVM => EVM.log0Op
     | .Yul => Yul.log0Op
 
-private def dispatchLog1 (τ : OperationType) : Transformer τ :=
+@[expose] def dispatchLog1 (τ : OperationType) : Transformer τ :=
   match τ with
     | .EVM => EVM.log1Op
     | .Yul => Yul.log1Op
 
-private def dispatchLog2 (τ : OperationType) : Transformer τ :=
+@[expose] def dispatchLog2 (τ : OperationType) : Transformer τ :=
   match τ with
     | .EVM => EVM.log2Op
     | .Yul => Yul.log2Op
 
-private def dispatchLog3 (τ : OperationType) : Transformer τ :=
+@[expose] def dispatchLog3 (τ : OperationType) : Transformer τ :=
   match τ with
     | .EVM => EVM.log3Op
     | .Yul => Yul.log3Op
 
-private def dispatchLog4 (τ : OperationType) : Transformer τ :=
+@[expose] def dispatchLog4 (τ : OperationType) : Transformer τ :=
   match τ with
     | .EVM => EVM.log4Op
     | .Yul => Yul.log4Op
 
-private def L (n : ℕ) := n - n / 64
+@[expose] def L (n : ℕ) := n - n / 64
 
-def dup (n : ℕ) : Transformer .EVM :=
+@[expose] def dup (n : ℕ) : Transformer .EVM :=
   λ s ↦
   let top := s.stack.take n
   if top.length = n then
@@ -206,7 +215,7 @@ def dup (n : ℕ) : Transformer .EVM :=
   else
     .error .StackUnderflow
 
-def swap (n : ℕ) : Transformer .EVM :=
+@[expose] def swap (n : ℕ) : Transformer .EVM :=
   λ s ↦
   let top := s.stack.take (n + 1)
   let bottom := s.stack.drop (n + 1)
@@ -215,12 +224,10 @@ def swap (n : ℕ) : Transformer .EVM :=
   else
     .error .StackUnderflow
 
--- TODO: Yul halting for `SELFDESTRUCT`
-def step {τ : OperationType} (op : Operation τ) (arg : Option (UInt256 × Nat) := .none) : Transformer τ := Id.run do
-  let _ : Id Unit := -- For debug logging
-    match τ with
-      | .EVM => dbg_trace op.pretty; pure ()
-      | .Yul => dbg_trace op.pretty; pure ()
+@[expose] def step {τ : OperationType} (op : Operation τ) (arg : Option (UInt256 × Nat) := .none) : Transformer τ := Id.run do
+  -- The former `let _ : Id Unit := dbg_trace op.pretty; pure ()` was removed: the binding was unused,
+  -- so the compiler eliminated it and it never printed (checked in the generated C). The opt-in
+  -- per-instruction trace now lives in `EVM.X`, behind `EVM.traceInstructions`.
   match τ, op with
     -- TODO: Revisit STOP, this is likely not the best way to do it.
     | τ, .STOP =>
@@ -393,124 +400,26 @@ def step {τ : OperationType} (op : Operation τ) (arg : Option (UInt256 × Nat)
           | .error e => .error e
           | .ok (_, _) => .error (Yul.Exception.Revert)
     | .EVM, .SELFDESTRUCT =>
+      -- The world-state effect (EIP-6780) is `State.selfDestruct`, shared with the Yul case.
       λ evmState ↦
         match evmState.stack.pop with
           | some ⟨ s , μ₁ ⟩ =>
-            let Iₐ := evmState.executionEnv.codeOwner
-            let r : AccountAddress := AccountAddress.ofUInt256 μ₁
-            if evmState.createdAccounts.contains Iₐ then
-              -- When `SELFDESTRUCT` is executed in the same transaction as the contract was created
-              let A' : Substate :=
-                { evmState.substate with
-                    selfDestructSet :=
-                      evmState.substate.selfDestructSet.insert Iₐ
-                    accessedAccounts :=
-                      evmState.substate.accessedAccounts.insert r
-                }
-              let accountMap' :=
-                match evmState.lookupAccount Iₐ with
-                  | none =>
-                    dbg_trace "No 'self' found to be destructed; this should probably not be happening;"; evmState.accountMap
-                  | some σ_Iₐ  =>
-                    match evmState.lookupAccount r with
-                      | none =>
-                        if σ_Iₐ.balance == ⟨0⟩ then
-                          evmState.accountMap
-                        else
-                          evmState.accountMap.insert r
-                            {(default : Account .EVM) with balance := σ_Iₐ.balance}
-                              |>.insert Iₐ {σ_Iₐ with balance := ⟨0⟩}
-                      | some σ_r =>
-                        if r ≠ Iₐ then
-                          evmState.accountMap.insert r
-                            {σ_r with balance := σ_r.balance + σ_Iₐ.balance}
-                              |>.insert Iₐ {σ_Iₐ with balance := ⟨0⟩}
-                        else
-                          -- if the target is the same as the contract calling `SELFDESTRUCT` that Ether will be burnt.
-                          evmState.accountMap.insert r {σ_r with balance := ⟨0⟩}
-                            |>.insert Iₐ {σ_Iₐ with balance := ⟨0⟩}
-              let evmState' :=
-                {evmState with
-                  accountMap := accountMap'
-                  substate := A'
-                }
-              .ok <| evmState'.replaceStackAndIncrPC s
-            else
-              /- When SELFDESTRUCT is executed in a transaction that is not the
-                same as the contract calling SELFDESTRUCT was created:
-              -/
-              let A' : Substate :=
-                { evmState.substate with
-                    accessedAccounts :=
-                      evmState.substate.accessedAccounts.insert r
-                }
-              let accountMap' :=
-                match evmState.lookupAccount Iₐ with
-                  | none => dbg_trace "No 'self' found to be destructed; this should probably not be happening;"; evmState.accountMap
-                  | some σ_Iₐ  =>
-                    match evmState.lookupAccount r with
-                      | none =>
-                        if σ_Iₐ.balance == ⟨0⟩ then
-                          evmState.accountMap
-                        else
-                          evmState.accountMap.insert r
-                            {(default : Account .EVM) with balance := σ_Iₐ.balance}
-                              |>.insert Iₐ {σ_Iₐ with balance := ⟨0⟩}
-                      | some σ_r =>
-                        if r ≠ Iₐ then
-                          evmState.accountMap.insert r
-                            {σ_r with balance := σ_r.balance + σ_Iₐ.balance}
-                              |>.insert Iₐ {σ_Iₐ with balance := ⟨0⟩}
-                        else
-                          -- Note that if the target is the same as the contract
-                          -- calling SELFDESTRUCT there is no net change in balances.
-                          -- Unlike the prior specification, Ether will not be burnt in this case.
-                          evmState.accountMap
-              let evmState' :=
-                {evmState with
-                  accountMap := accountMap'
-                  substate := A'
-                }
-              .ok <| evmState'.replaceStackAndIncrPC s
+            let σ' := evmState.toState.selfDestruct (AccountAddress.ofUInt256 μ₁)
+            let evmState' :=
+              {evmState with
+                accountMap := σ'.accountMap
+                substate := σ'.substate
+              }
+            .ok <| evmState'.replaceStackAndIncrPC s
           | _ => .error .StackUnderflow
     | .Yul, .SELFDESTRUCT => λ yulState lits ↦
+      -- Same world-state effect as the EVM case (`State.selfDestruct`, EIP-6780); like `STOP`,
+      -- `SELFDESTRUCT` then halts execution.
       match lits with
         | [a] =>
-            let Iₐ := yulState.executionEnv.codeOwner
-            let r : AccountAddress := AccountAddress.ofUInt256 a
-              let A' : Substate :=
-                { yulState.toState.substate with
-                    selfDestructSet :=
-                      yulState.toState.substate.selfDestructSet.insert Iₐ
-                    accessedAccounts :=
-                      yulState.toState.substate.accessedAccounts.insert r
-                }
-              let accountMap' :=
-                match yulState.toState.lookupAccount Iₐ with
-                  | none =>
-                    dbg_trace "No 'self' found to be destructed; this should probably not be happening;"; yulState.toState.accountMap
-                  | some σ_Iₐ  =>
-                    match yulState.toState.lookupAccount r with
-                      | none =>
-                        if σ_Iₐ.balance == ⟨0⟩ then
-                          yulState.toState.accountMap
-                        else
-                          yulState.toState.accountMap.insert r
-                            {(default : Account .Yul) with balance := σ_Iₐ.balance}
-                              |>.insert Iₐ {σ_Iₐ with balance := ⟨0⟩}
-                      | some σ_r =>
-                        if r ≠ Iₐ then
-                          yulState.toState.accountMap.insert r
-                            {σ_r with balance := σ_r.balance + σ_Iₐ.balance}
-                              |>.insert Iₐ {σ_Iₐ with balance := ⟨0⟩}
-                        else
-                          -- if the target is the same as the contract calling `SELFDESTRUCT` that Ether will be burnt.
-                          yulState.toState.accountMap.insert r {σ_r with balance := ⟨0⟩}
-                            |>.insert Iₐ {σ_Iₐ with balance := ⟨0⟩}
-              let yulState' :=
-                yulState.setState
-                  { yulState.toState with accountMap := accountMap', substate := A'}
-              .ok <| (yulState', none)
+            let yulState' :=
+              yulState.setState (yulState.toState.selfDestruct (AccountAddress.ofUInt256 a))
+            .error (Yul.Exception.YulHalt yulState' ⟨0⟩)
         | _ => .error .InvalidArguments
     | τ, .INVALID => dispatchInvalid τ
     | .EVM, .Push .PUSH0 => λ evmState =>

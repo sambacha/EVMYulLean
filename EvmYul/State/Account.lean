@@ -1,10 +1,23 @@
-import EvmYul.Maps.StorageMap
-import EvmYul.SpongeHash.Keccak256
+module
 
-import EvmYul.UInt256
-import EvmYul.Wheels
+public import EvmYul.FFI.Primitives
+public import Std.Data.TreeSet
+public import EvmYul.Maps.StorageMap
+public import EvmYul.SpongeHash.Keccak256
 
-import EvmYul.Yul.Ast
+public import EvmYul.UInt256
+public import EvmYul.Wheels
+
+public import EvmYul.Yul.Ast
+
+/-!
+# Accounts
+
+`Account τ`: nonce, balance, storage, transient storage and code (EVM bytecode or a Yul contract),
+and the persistent part that is committed to the state trie.
+-/
+
+public section
 
 namespace EvmYul
 
@@ -12,12 +25,14 @@ namespace EvmYul
   Precompiled contract addresses.
   (142) `π ≡ {1, 2, 3, 4, 5, 6, 7, 8, 9, 10}`
 -/
-def π : Batteries.RBSet AccountAddress compare :=
-  Batteries.RBSet.ofList ((List.range 11).tail.map (Fin.ofNat _)) compare
+@[expose] def π : Std.TreeSet AccountAddress compare :=
+  Std.TreeSet.ofList ((List.range 11).tail.map (Fin.ofNat _)) compare
 
 inductive ToExecute (τ : OperationType) where
   | Code (code : Yul.Ast.contractCode τ)
   | Precompiled (precompiled : AccountAddress)
+
+@[expose] section
 
 structure PersistentAccountState (τ : OperationType) where
   nonce    : UInt256
@@ -25,6 +40,10 @@ structure PersistentAccountState (τ : OperationType) where
   storage  : Storage
   code     : (Yul.Ast.contractCode τ)
   deriving BEq, Inhabited, Repr
+
+end
+
+@[expose] section
 
 /--
 The `Account` data. Section 4.1.
@@ -47,10 +66,12 @@ structure Account (τ : OperationType) extends PersistentAccountState τ where
   tstorage : Storage
 deriving BEq, Inhabited
 
-def PersistentAccountState.codeHash (self : PersistentAccountState .EVM) : UInt256 :=
+end
+
+@[expose] def PersistentAccountState.codeHash (self : PersistentAccountState .EVM) : UInt256 :=
   .ofNat <| fromByteArrayBigEndian (ffi.KEC self.code)
 
-def Account.codeHash (self : (Account .EVM)) : UInt256 :=
+@[expose] def Account.codeHash (self : (Account .EVM)) : UInt256 :=
   self.toPersistentAccountState.codeHash
 
 end EvmYul

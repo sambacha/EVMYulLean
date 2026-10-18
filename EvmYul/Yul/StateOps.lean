@@ -1,4 +1,15 @@
-import EvmYul.Yul.State
+module
+
+public import EvmYul.Yul.State
+
+/-!
+# Operations on the Yul state
+
+Variable insertion and lookup, multi-assignment, and the setters for the shared, machine and world
+state.
+-/
+
+public section
 
 namespace EvmYul
 
@@ -7,39 +18,39 @@ namespace Yul
 namespace State
 
 -- | Insert an (identifier, literal) pair into the varstore.
-def insert (var : Identifier) (val : Literal) : Yul.State → Yul.State
+@[expose] def insert (var : Identifier) (val : Literal) : Yul.State → Yul.State
   | (Ok sharedState store) => Ok sharedState (store.insert var val)
   | s => s
 
 -- | Zip a list of variables with a list of literals and insert right-to-left.
-def multifill (vars : List Identifier) (vals : List Literal) : Yul.State → Yul.State
+@[expose] def multifill (vars : List Identifier) (vals : List Literal) : Yul.State → Yul.State
   | s@(Ok _ _) => (List.zip vars vals).foldr (λ (var, val) s ↦ s.insert var val) s
   | s => s
 
 -- | Overwrite the EvmYul.Yul.State state of some state.
-def setSharedState (sharedState : EvmYul.SharedState .Yul) : Yul.State → Yul.State
+@[expose] def setSharedState (sharedState : EvmYul.SharedState .Yul) : Yul.State → Yul.State
   | Ok _ store => Ok sharedState store
   | s => s
 
-def setMachineState (mstate : EvmYul.MachineState) : Yul.State → Yul.State
+@[expose] def setMachineState (mstate : EvmYul.MachineState) : Yul.State → Yul.State
   | Ok sstate store => Ok {sstate with toMachineState := mstate} store
   | s => s
 
-def setState (state : EvmYul.State .Yul) : Yul.State → Yul.State
+@[expose] def setState (state : EvmYul.State .Yul) : Yul.State → Yul.State
   | Ok sstate store => Ok {sstate with toState := state} store
   | s => s
 
 -- | Overwrite the varstore of some state.
-def setStore (s s' : Yul.State) : Yul.State :=
+@[expose] def setStore (s s' : Yul.State) : Yul.State :=
   match s, s' with
     | (Ok sharedState _), (Ok _ store) => Ok sharedState store
     | s, _ => s
 
-def setContinue : Yul.State → Yul.State
+@[expose] def setContinue : Yul.State → Yul.State
   | Ok sharedState store => Checkpoint (.Continue sharedState store)
   | s => s
 
-def setBreak : Yul.State → Yul.State
+@[expose] def setBreak : Yul.State → Yul.State
   | Ok sharedState store => Checkpoint (.Break sharedState store)
   | s => s
 
@@ -48,29 +59,29 @@ theorem insert_setBreak (s : Yul.State) (var : Identifier) (val : Literal) :
     (State.setBreak s).insert var val = State.setBreak s := by
   cases s <;> simp [State.setBreak, State.insert]
 
-def setLeave : Yul.State → Yul.State
+@[expose] def setLeave : Yul.State → Yul.State
   | Ok sharedState store => Checkpoint (.Leave sharedState store)
   | s => s
 
 -- | Indicate that we've hit an infinite loop/ran out of fuel.
-def diverge : Yul.State → Yul.State
+@[expose] def diverge : Yul.State → Yul.State
   | Ok _ _ => .OutOfFuel
   | s => s
 
 -- | Initialize function parameters and return values in varstore.
-def initcall (params : List Identifier) (args : List Literal) : Yul.State → Yul.State
+@[expose] def initcall (params : List Identifier) (args : List Literal) : Yul.State → Yul.State
   | s@(Ok _ _) =>
     let s₁ := s.setStore default
     s₁.multifill params args
   | s => s
 
 -- | Since it literally does not matter what happens if the state is non-Ok, we just use the default.
-def mkOk : Yul.State → Yul.State
+@[expose] def mkOk : Yul.State → Yul.State
   | Checkpoint _ => default
   | s => s
 
 -- | Helper function for `reviveJump`.
-def revive : Jump → Yul.State
+@[expose] def revive : Jump → Yul.State
   | .Continue sharedState store => Ok sharedState store
   | .Break sharedState store => Ok sharedState store
   | .Leave sharedState store => Ok sharedState store
@@ -84,12 +95,12 @@ def revive : Jump → Yul.State
 -- The compiler disallows top-level `Continue`s or `Break`s in function bodies,
 -- thus it is safe to assume the state we're reviving is a checkpoint from the
 -- expected flavor of `Jump`.
-def reviveJump : Yul.State → Yul.State
+@[expose] def reviveJump : Yul.State → Yul.State
   | Checkpoint c => revive c
   | s => s
 
 -- | If s' is non-Ok, overwrite s with s'.
-def overwrite? (s s' : Yul.State) : Yul.State :=
+@[expose] def overwrite? (s s' : Yul.State) : Yul.State :=
   match s' with
     | Ok _ _ => s
     | _ => s'
@@ -99,7 +110,7 @@ def overwrite? (s s' : Yul.State) : Yul.State :=
 -- ============================================================================
 
 -- | Lookup the literal associated with an variable in the varstore, returning 0 if not found.
-def lookup! (var : Identifier) : Yul.State → Literal
+@[expose] def lookup! (var : Identifier) : Yul.State → Literal
   | Ok _ store => (store.lookup var).get!
   | Checkpoint (.Continue _ store) => (store.lookup var).get!
   | Checkpoint (.Break _ store) => (store.lookup var).get!
@@ -125,23 +136,23 @@ theorem lookup_insert_ne_ok
 --  STATE NOTATION
 -- ============================================================================
 
-def toSharedState : State → EvmYul.SharedState .Yul
+@[expose] def toSharedState : State → EvmYul.SharedState .Yul
   | Ok s _ => s
   | _ => default
 
-def executionEnv : State → EvmYul.ExecutionEnv .Yul
+@[expose] def executionEnv : State → EvmYul.ExecutionEnv .Yul
   | Ok s _ => s.executionEnv
   | _ => default
 
-def toMachineState : State → EvmYul.MachineState
+@[expose] def toMachineState : State → EvmYul.MachineState
   | Ok s _ => s.toMachineState
   | _ => default
 
-def toState : State → EvmYul.State .Yul
+@[expose] def toState : State → EvmYul.State .Yul
   | Ok s _ => s.toState
   | _ => default
 
-def store : State → VarStore
+@[expose] def store : State → VarStore
   | Ok _ store => store
   | _ => default
 
@@ -156,7 +167,7 @@ This should have been an instance of GetElem in the first place.
 
 N.B. We also ignore the validity condition altogether for the time being.
 -/
-instance : GetElem Yul.State Identifier Literal (λ s idx ↦ idx ∈ s.store) where
+@[expose] instance : GetElem Yul.State Identifier Literal (λ s idx ↦ idx ∈ s.store) where
   getElem s ident _ := s.lookup! ident
 
 notation "❓" => Yul.State.isOutOfFuel

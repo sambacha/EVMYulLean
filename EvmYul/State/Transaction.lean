@@ -1,16 +1,27 @@
-import Mathlib.Data.List.AList
+module
 
-import EvmYul.UInt256
-import EvmYul.Wheels
-import EvmYul.State.TrieRoot
-import Conform.Wheels
-import EvmYul.State.Substate
+public import Mathlib.Data.List.AList
+
+public import EvmYul.UInt256
+public import EvmYul.Wheels
+public import EvmYul.Maps.TrieRoot
+public import EvmYul.State.Substate
+
+/-!
+# Transactions
+
+The transaction types (legacy, access-list EIP-2930, dynamic-fee EIP-1559, blob EIP-4844) with
+their common fields, access lists and receipts.
+-/
+
+public section
 
 namespace EvmYul
 
-open Batteries (RBMap RBSet)
 
 -- "All transaction types specify a number of common fields:"
+@[expose] section
+
 /--
 `BaseTransaction`. Section 4.3.
 
@@ -32,7 +43,11 @@ structure Transaction.Base where
   data            : ByteArray
 deriving BEq, Repr
 
+end
+
 -- "EIP-2930 (type 1) and EIP-1559 (type 2) transactions also have:""
+@[expose] section
+
 /--
 `AccessList`. EIP-2930.
 - `chainId`    `c`
@@ -45,7 +60,11 @@ structure Transaction.WithAccessList where
   yParity : UInt256
 deriving BEq, Repr
 
+end
+
 -- "type 0 and type 1 transactions specify gas price as a single value:"
+@[expose] section
+
 /--
 `WithGasPrice`. Section 4.3.
 - `gasPrice` `p`
@@ -54,7 +73,11 @@ structure Transaction.WithGasPrice where
   gasPrice : UInt256
 deriving BEq, Repr
 
+end
+
 -- Legacy transactions do not have an `accessList`, while `chainId` and `yParity` for legacy transactions are combined into a single value:
+@[expose] section
+
 /--
 Type 0: `LegacyTransaction`. Section 4.3.
 - `nonce`     `n`
@@ -70,6 +93,10 @@ Type 0: `LegacyTransaction`. Section 4.3.
 structure LegacyTransaction extends Transaction.Base, Transaction.WithGasPrice where
   w: UInt256
 deriving BEq, Repr
+
+end
+
+@[expose] section
 
 /-- Type 1: `AccessListTransaction`
 - `nonce`     `n`
@@ -87,6 +114,10 @@ deriving BEq, Repr
 structure AccessListTransaction
   extends Transaction.Base, Transaction.WithAccessList, Transaction.WithGasPrice
 deriving BEq, Repr
+
+end
+
+@[expose] section
 
 /--
 Type 2: `DynamicFeeTransaction`
@@ -108,10 +139,18 @@ structure DynamicFeeTransaction extends Transaction.Base, Transaction.WithAccess
   maxPriorityFeePerGas : UInt256
 deriving BEq, Repr
 
+end
+
+@[expose] section
+
 structure BlobTransaction extends DynamicFeeTransaction where
   maxFeePerBlobGas  : UInt256
   blobVersionedHashes : List ByteArray
 deriving BEq, Repr
+
+end
+
+@[expose] section
 
 inductive Transaction where
   | legacy  : LegacyTransaction → Transaction
@@ -119,6 +158,8 @@ inductive Transaction where
   | dynamic : DynamicFeeTransaction → Transaction
   | blob    : BlobTransaction → Transaction
 deriving BEq, Repr
+
+end
 
 def Transaction.base : Transaction → Transaction.Base
   | legacy t => t.toBase
@@ -143,10 +184,12 @@ def Transaction.toBlobs (t : ℕ × ByteArray) : Option (String × String) := do
   let rlp := t.2
   pure (EvmYul.toHex rlpᵢ, EvmYul.toHex rlp)
 
-def Transaction.computeTrieRoot (ts : Array ByteArray) : Option ByteArray := do
+@[expose] def Transaction.computeTrieRoot (ts : Array ByteArray) : Option ByteArray := do
   match Array.mapM Transaction.toBlobs ((Array.range ts.size).zip ts) with
     | none => .none
     | some ws => (ByteArray.ofBlob (blobComputeTrieRoot ws)).toOption
+
+@[expose] section
 
 structure TransactionReceipt where
   type                     : UInt8     /- R_x -/
@@ -155,6 +198,8 @@ structure TransactionReceipt where
   bloomFilter              : ByteArray /- R_b -/
   logSeries                : LogSeries /- R_l -/
 deriving BEq, Inhabited, Repr
+
+end
 
 def L_R : TransactionReceipt → 𝕋
   | ⟨_, statusCode, cumulativeGasUsedInBlock, bloomFilter, logSeries⟩ =>
@@ -171,7 +216,7 @@ def TransactionReceipt.toBlobs (w : ℕ × ByteArray) : Option (String × String
   pure (EvmYul.toHex rlpᵢ, EvmYul.toHex rlp)
 
 -- EIP-4895
-def TransactionReceipt.computeTrieRoot (ws : Array ByteArray) : Option ByteArray := do
+@[expose] def TransactionReceipt.computeTrieRoot (ws : Array ByteArray) : Option ByteArray := do
   match Array.mapM TransactionReceipt.toBlobs ((Array.range ws.size).zip ws) with
     | none => .none
     | some ws => (ByteArray.ofBlob (blobComputeTrieRoot ws)).toOption

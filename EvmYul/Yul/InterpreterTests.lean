@@ -1,5 +1,15 @@
-import EvmYul.Yul.Interpreter
-import EvmYul.Yul.StateOps
+module
+
+public import EvmYul.Yul.Interpreter
+public import EvmYul.Yul.StateOps
+
+/-!
+# Tests of the Yul interpreter
+
+Checks of `Yul.Interpreter` on fixed programs (a `break` stops the rest of its block).
+-/
+
+@[expose] public section
 
 namespace EvmYul
 namespace Yul

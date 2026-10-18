@@ -1,19 +1,20 @@
-import EvmYul.EVM.State
-import EvmYul.EVM.Semantics
-import EvmYul.EVM.Gas
-import EvmYul.Wheels
+module
 
-import EvmYul.State.TransactionOps
-import EvmYul.State.Withdrawal
+public import EvmYul
+public import Conform.Model
+public import Conform.Exception
+public import Conform.TestParser
+public import Conform.Verdict
 
-import EvmYul.Maps.AccountMap
+/-!
+# Conformance test runner
 
-import EvmYul.Pretty
-import EvmYul.Wheels
+Executes a parsed fixture with the EVM model: validates and applies each block and its
+transactions to the pre-state, and compares the resulting accounts with the fixture's post-state
+(`preImpliesPost`).
+-/
 
-import Conform.Exception
-import Conform.Model
-import Conform.TestParser
+public section
 
 namespace EvmYul
 
@@ -26,7 +27,7 @@ def GlobalBlacklist : Array String := VerySlowTests
 abbrev TestId : Type := System.FilePath × String
 
 def PersistentAccountMap.toAccountMap (self : PersistentAccountMap .EVM) : AccountMap .EVM :=
-  self.foldl addAccount default
+  self.foldl addAccount Inhabited.default
   where addAccount s addr acc :=
     let account : Account .EVM :=
       {
@@ -39,7 +40,7 @@ def PersistentAccountMap.toAccountMap (self : PersistentAccountMap .EVM) : Accou
     s.insert addr account
 
 def PersistentAccountMap.toEVMState (self : PersistentAccountMap .EVM) : EVM.State :=
-  self.foldl addAccount default
+  self.foldl addAccount Inhabited.default
   where addAccount s addr acc :=
     let account : Account .EVM :=
       {
@@ -57,10 +58,9 @@ def TestMap.toTests (self : TestMap) : List (String × TestEntry) := self.toList
 
 def Post.toEVMState : Post → EVM.State := PersistentAccountMap.toEVMState
 
-local instance : Inhabited EVM.Transformer where
-  default := λ _ ↦ default
+local instance : Inhabited EVM.Transformer := ⟨λ _ ↦ Inhabited.default⟩
 
-private def compareWithEVMdefaults (s₁ s₂ : EvmYul.Storage) : Bool :=
+def compareWithEVMdefaults (s₁ s₂ : EvmYul.Storage) : Bool :=
   withDefault s₁ == withDefault s₂
   where
     withDefault (s : EvmYul.Storage) : EvmYul.Storage := if s.contains ⟨0⟩ then s else s.insert ⟨0⟩ ⟨0⟩
@@ -73,7 +73,7 @@ Now that this is not a `Finmap`, this is probably defined somewhere in the API, 
 def storageComplement (m₁ m₂ : PersistentAccountMap .EVM) : PersistentAccountMap .EVM := Id.run do
   let mut result : PersistentAccountMap .EVM := m₁
   for ⟨k₂, v₂⟩ in m₂.toList do
-    match m₁.find? k₂ with
+    match m₁.get? k₂ with
     | .none => continue
     | .some v₁ => if v₁ == v₂ then result := result.erase k₂ else continue
   return result
@@ -96,7 +96,7 @@ section
 This section exists for debugging / testing mostly. It's somewhat ad-hoc.
 -/
 
-private def almostBEqButNotQuiteEvmYulState (s₁ s₂ : PersistentAccountMap .EVM) : Except String Bool := do
+def almostBEqButNotQuiteEvmYulState (s₁ s₂ : PersistentAccountMap .EVM) : Except String Bool := do
   if s₁ == s₂ then .ok true else throw "state mismatch"
 
 /--
@@ -105,7 +105,7 @@ NB it is ever so slightly more convenient to be in `Except String Bool` here rat
 This is morally `s₁ == s₂` except we get a convenient way to both tune what is being compared
 as well as report fine grained errors.
 -/
-private def almostBEqButNotQuite (s₁ s₂ : PersistentAccountMap .EVM) : Except String Bool := do
+def almostBEqButNotQuite (s₁ s₂ : PersistentAccountMap .EVM) : Except String Bool := do
   discard <| almostBEqButNotQuiteEvmYulState s₁ s₂
   pure true -- Yes, we never return false, because we throw along the way. Yes, this is `Option`.
 
@@ -118,7 +118,10 @@ def executeTransaction
   (header : BlockHeader)
   : Except EVM.Exception EVM.State
 := do
-  let _fuel : ℕ := s.accountMap.find? sender |>.elim ⟨0⟩ (·.balance) |>.toNat
+  -- Fuel no longer depends only on the sender's balance (handoff CE-9: zero balance ⇒ zero fuel ⇒
+  -- `OutOfFuel` for every transaction); see `EVM.GasMeter.transactionFuel`.
+  let _fuel : ℕ :=
+    EVM.GasMeter.transactionFuel transaction (s.accountMap.get? sender |>.elim ⟨0⟩ (·.balance))
 
   let (ypState, substate, statusCode, totalGasUsed) ←
     EVM.Υ _fuel
@@ -189,6 +192,12 @@ def validateHeaderBeforeTransactions
     throw <| .BlockException .INVALID_BASEFEE_PER_GAS
   if calcExcessBlobGas parent.blockHeader != header.excessBlobGas then
     throw <| .BlockException .INCORRECT_EXCESS_BLOB_GAS
+  -- Header validity (Yellow Paper, block-header validity; EELS `validate_header`): `H_g ≤ H_l`.
+  -- A header that claims more gas than its own limit is invalid before any transaction runs.
+  -- Checked after the rules above, so a header that already violates one of them keeps that
+  -- verdict.
+  if header.gasUsed > header.gasLimit then
+    throw <| .BlockException .GAS_USED_OVERFLOW
   pure parent
 
 def validateTransaction
@@ -196,6 +205,7 @@ def validateTransaction
   (chainId : ℕ)
   (header : BlockHeader)
   (totalGasUsedInBlock : ℕ)
+  (blobGasUsedInBlock : ℕ)
   (T : Transaction)
   : Except EVM.Exception AccountAddress
 := do
@@ -207,10 +217,10 @@ def validateTransaction
 
   let maxFeePerGas :=
     /-
-      The test `lowGasPriceOldTypes_d0g0v0_Cancun` expects an
-      `INSUFFICIENT_MAX_FEE_PER_GAS`, but its transaction doesn't have a
-      `maxFeePerGas` field. We use `gasPrice` instead.
-      See the 7th test for intrinsic validity, Yellow Paper, Chapter 7
+      Intrinsic validity (Yellow Paper, intrinsic transaction validity; EIP-1559): every
+      transaction must offer at least the block's base fee. For the fee-market types that offer is
+      `maxFeePerGas`; legacy and access-list transactions have no such field and offer their
+      `gasPrice`, which EIP-1559 uses as both their maximum fee and their priority fee.
     -/
     match T with
       | .dynamic t | .blob t => t.maxFeePerGas
@@ -230,8 +240,13 @@ def validateTransaction
         throw <| .TransactionException .TYPE_3_TX_CONTRACT_CREATION
       if bt.maxFeePerBlobGas.toNat < header.getBlobGasprice then
         .error (.TransactionException .INSUFFICIENT_MAX_FEE_PER_BLOB_GAS)
-      if bt.blobVersionedHashes.length > 6 then
+      -- EIP-4844 (Cancun) bounds blob gas per *block*, not per transaction: a transaction whose
+      -- blobs alone exceed `MAX_BLOB_GAS_PER_BLOCK` can never be included; otherwise it must fit
+      -- in what the earlier transactions of the block left over.
+      if getTotalBlobGas T > MAX_BLOB_GAS_PER_BLOCK then
         throw <| .TransactionException .TYPE_3_TX_BLOB_COUNT_EXCEEDED
+      if getTotalBlobGas T > MAX_BLOB_GAS_PER_BLOCK - blobGasUsedInBlock then
+        throw <| .TransactionException .TYPE_3_TX_MAX_BLOB_GAS_ALLOWANCE_EXCEEDED
       if bt.blobVersionedHashes.length = 0 then
         throw <| .TransactionException .TYPE_3_TX_ZERO_BLOBS
       if bt.blobVersionedHashes.any (λ h ↦ h[0]? != .some VERSIONED_HASH_VERSION_KZG) then
@@ -280,7 +295,7 @@ def validateTransaction
 
   -- "Also, with a slight abuse of notation ... "
   let (senderCode, senderNonce, senderBalance) :=
-    match σ.find? S_T with
+    match σ.get? S_T with
       | some sender => (sender.code, sender.nonce, sender.balance)
       | none =>
         dbg_trace s!"could not find sender {EvmYul.toHex S_T.toByteArray}"
@@ -392,7 +407,6 @@ def validateBlock
   : Except EVM.Exception Unit
 := do
 
-  let MAX_BLOB_GAS_PER_BLOCK := 786432
   let blobGasUsed ← block.transactions.array.foldlM (init := 0) λ blobSum t ↦ do
     let blobSum := blobSum + getTotalBlobGas t
     if blobSum > MAX_BLOB_GAS_PER_BLOCK then
@@ -497,7 +511,7 @@ def processBlocks
           match e with
             | .MissedExpectedException _  => throw e
             | _ =>
-              if rawBlock.exception.contains (repr e).pretty then
+              if Verdict.labelMatches rawBlock.exception (repr e).pretty then
                 -- dbg_trace
                 --   s!"Expected exception: {String.intercalate "|" rawBlock.exception}; got exception: {repr e}"
                 pure accState
@@ -516,7 +530,7 @@ def processBlocks
         0x000F3df6D732807Ef1319fB7B8bB8522d0Beac02
       let SYSTEM_ADDRESS : AccountAddress :=
         0xfffffffffffffffffffffffffffffffffffffffe
-      match s₀.accountMap.find? BEACON_ROOTS_ADDRESS with
+      match s₀.accountMap.get? BEACON_ROOTS_ADDRESS with
         | none => pure s₀
         | some roots =>
           let beaconRootsAddressCode := roots.code
@@ -530,7 +544,7 @@ def processBlocks
               s₀.blocks
               s₀.accountMap
               s₀.accountMap
-              default
+              Inhabited.default
               SYSTEM_ADDRESS
               SYSTEM_ADDRESS
               BEACON_ROOTS_ADDRESS
@@ -545,25 +559,27 @@ def processBlocks
               true
           let σ ←
             match beaconCallResult with
-              | .ok (_, σ, _, _, _ /- can't fail-/, _) => pure σ
+              | .ok r => pure r.accountMap -- the beacon-roots system call cannot fail
               | .error e => throw <| .ExecutionException e
           let s := {s₀ with accountMap := σ}
           pure s
 
     -- Transactions execution
-    let s ←
+    let (s, _) ←
       block.transactions.array.foldlM
-        (λ s' trans ↦ do
+        (λ (s', blobGasUsed) trans ↦ do
           let S_T ←
             validateTransaction
               s'.accountMap
               chainId
               block.blockHeader
               s'.totalGasUsedInBlock
+              blobGasUsed
               trans
-          executeTransaction trans S_T s' block.blockHeader
+          let s'' ← executeTransaction trans S_T s' block.blockHeader
+          pure (s'', blobGasUsed + getTotalBlobGas trans)
         )
-        {s with totalGasUsedInBlock := 0, transactionReceipts := .empty}
+        ({s with totalGasUsedInBlock := 0, transactionReceipts := .empty}, 0)
 
     -- Withdrawals execution
     let σ := applyWithdrawals s.accountMap block.withdrawals.array
@@ -585,7 +601,7 @@ def preImpliesPost (entry : TestEntry)
       |>.option resultState.accountMap ProcessedBlock.σ
     let result : PersistentAccountMap .EVM :=
       lastAccountMap.foldl
-        (λ r addr ⟨⟨nonce, balance, storage, code⟩, _, _⟩ ↦ r.insert addr ⟨nonce, balance, storage, code⟩) default
+        (λ r addr ⟨⟨nonce, balance, storage, code⟩, _, _⟩ ↦ r.insert addr ⟨nonce, balance, storage, code⟩) Inhabited.default
     let persistentAccountMap := resultState.accountMap.toPersistentAccountMap
     match entry.postState with
       | .Map post =>

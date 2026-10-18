@@ -1,9 +1,19 @@
 -- Requires the following python packages: coincurve, typing-extensions
 
-import EvmYul.Wheels
-import EvmYul.PerformIO
-import Conform.Wheels
-import EvmYul.SpongeHash.Keccak256
+module
+
+public import EvmYul.Wheels
+public import EvmYul.PerformIO
+public import EvmYul.SpongeHash.Keccak256
+
+/-!
+# secp256k1 signatures
+
+`ECDSARECOVER` and `ECDSASIGN` on secp256k1, computed by the Python helper (`coincurve`) through
+`totallySafePerformIO`, and the curve order `secp256k1n`.
+-/
+
+public section
 
 def secp256k1n : ℕ := 115792089237316195423570985008687907852837564279074904382605163141518161494337
 
@@ -12,15 +22,15 @@ def blobECDSARECOVER (e v r s : String) : String :=
     pythonCommandOfInput e v r s
   where pythonCommandOfInput (e v r s : String) : IO.Process.SpawnArgs := {
     cmd := "python3",
-    args := #["EvmYul/EllipticCurvesPy/recover.py", e, v, r, s]
+    args := #["python/EllipticCurvesPy/recover.py", e, v, r, s]
   }
 
 def blobSign (e pᵣ : String) : List String :=
-  (String.split · Char.isWhitespace) ∘ totallySafePerformIO ∘ IO.Process.run <|
+  (String.splitToList · Char.isWhitespace) ∘ totallySafePerformIO ∘ IO.Process.run <|
     pythonCommandOfInput e pᵣ
   where pythonCommandOfInput (e pᵣ : String) : IO.Process.SpawnArgs := {
     cmd := "python3",
-    args := #["EvmYul/EllipticCurvesPy/sign.py", e, pᵣ]
+    args := #["python/EllipticCurvesPy/sign.py", e, pᵣ]
   }
 
 -- Appendix F. Signing Transactions

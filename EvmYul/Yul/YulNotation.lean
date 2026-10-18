@@ -1,6 +1,20 @@
-import EvmYul.Yul.Ast
-import Lean.Parser
-import EvmYul.Operations
+module
+
+public import EvmYul.Yul.Ast
+public import EvmYul.Operations
+public meta import EvmYul.Yul.Ast
+public meta import EvmYul.Operations
+public meta import Lean.Parser
+public meta import Lean.Elab.Term
+
+/-!
+# Yul notation
+
+A `<<…>>` syntax for writing Yul programs in Lean: the parser of Yul identifiers, literals,
+statements and functions, and its translation to `Yul.Ast`.
+-/
+
+public section
 
 namespace EvmYul
 
@@ -9,6 +23,10 @@ namespace Yul
 namespace Notation
 
 open Ast Lean Parser Elab Term
+
+/-! The parser and the syntax-to-AST translators run while importing files are elaborated, so they
+are `meta` (compile-time) code. -/
+meta section
 
 def yulKeywords := ["let", "if", "default", "switch", "case"]
 
@@ -28,20 +46,19 @@ def idSubsequentChar : Array Char := Id.run <| do
   return arr.push '.'
 
 def idFn : ParserFn := fun c s => Id.run do
-  let input := c.input
   let start := s.pos
-  if h : input.atEnd start then
+  if h : c.atEnd start then
     s.mkEOIError
   else
-    let fst := input.get' start h
+    let fst := c.get' start h
     if not (idFirstChar.contains fst) then
       return s.mkError "yul identifier"
-    let s := takeWhileFn idSubsequentChar.contains c (s.next input start)
+    let s := takeWhileFn idSubsequentChar.contains c (s.next' c start h)
     let stop := s.pos
-    let name := .str .anonymous (input.extract start stop)
+    let name := .str .anonymous (c.extract start stop)
     if yulKeywords.contains name.lastComponentAsString then
       return s.mkError "yul identifier"
-    mkIdResult start none name c s
+    mkIdResult start none name true c s
 
 def idNoAntiquot : Parser := { fn := idFn }
 
@@ -69,22 +86,22 @@ declare_syntax_cat stmt
 syntax identifier_list := ident,*
 syntax typed_identifier_list := ident,*
 syntax function_call := ident "(" expr,* ")"
-syntax block := "{" stmt* "}"
-syntax if' := "if" expr block
+syntax yul_block := "{" stmt* "}"
+syntax if' := "if" expr yul_block
 syntax function_definition :=
   "function" ident "(" typed_identifier_list ")"
     ("->" typed_identifier_list)?
-    block
+    yul_block
 syntax params_list := "[" typed_identifier_list "]"
 syntax variable_declaration := "let" ident (":=" expr)?
 -- syntax let_str_literal := "let" ident ":=" str -- TODO(fix)
 syntax variable_declarations := "let" typed_identifier_list (":=" expr)?
-syntax for_loop := "for" block expr block block
+syntax for_loop := "for" yul_block expr yul_block yul_block
 syntax assignment := identifier_list ":=" expr
 
 syntax stmtlist := stmt*
 
-syntax block : stmt
+syntax yul_block : stmt
 syntax if' : stmt
 syntax function_definition : stmt
 syntax variable_declarations : stmt
@@ -127,7 +144,7 @@ partial def translatePrimOp (primOp : PrimOp) : TermElabM Term := do
   where
     familyAndInstr (primOp : PrimOp) : TermElabM (String × String) := do
       let family :: instr :: [] := toString primOp |>.splitOn | throwError s!"{primOp} shape not <family> <instruction>"
-      pure (family, instr.drop 1 |>.dropRight 1)
+      pure (family, (instr.drop 1 |>.dropEnd 1).toString)
     YulTag : Name := "EvmYul.OperationType.Yul".toName
 
 partial def translateIdent (idn : TSyntax `ident) : TSyntax `term :=
@@ -359,7 +376,7 @@ partial def translateStmtList (stmt : TSyntax `stmt) : TermElabM Term :=
     `([$stmts',*])
   | _ => throwError (toString stmt.raw)
 
-private def elabWith {β : SyntaxNodeKinds}
+def elabWith {β : SyntaxNodeKinds}
   (x : Syntax) (translator : TSyntax β → TermElabM Term) : TermElabM Lean.Expr := do
   elabTerm (←translator (TSyntax.mk (ks := β) x)) .none
 
@@ -368,6 +385,8 @@ elab "<f" f:function_definition ">" : term => elabWith f translateFdef
 elab "<s" s:stmt ">"                : term => elabWith s translateStmt
 elab "<ss" ss:stmt ">"              : term => elabWith ss translateStmtList
 elab "<params" p:params_list ">"    : term => elabWith p translateParamsList
+
+end
 
 def f : FunctionDefinition := <f
   function sort2(a, b) -> x, y {
